@@ -831,24 +831,28 @@ def report_pdf():
     month_names = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
     def indo_date(value):
         return f"{value.day} {month_names[value.month-1]} {value.year}"
-    period = f"Periode: {indo_date(min(dates))} s/d {indo_date(max(dates))}"
-    story += [Paragraph(escape(period), ParagraphStyle("Period", parent=heading, fontSize=9)),
-              Spacer(1, 5*mm)]
     first = rows[0]
-    student_name = profile["full_name"] if student_id and profile and profile.get("full_name") else "Semua siswa"
+    student_name = profile["full_name"] if student_id and profile and profile.get("full_name") else ""
     class_name = profile["class_name"] if profile else first["class_name"]
-    workplace = (profile["workplace"] if profile else first["workplace"]) or "-"
-    supervisor = (profile["supervisor"] if profile else first["supervisor"]) or "-"
+    # Bulan rekap mengikuti bulan data jurnal yang sedang diekspor.
+    months = sorted({(value.year, value.month) for value in dates})
+    month_label = ", ".join(
+        f"{month_names[month - 1]} {year}" for year, month in months
+    )
+    recap_date = indo_date(datetime.now().astimezone().date())
     info = [
-        [Paragraph("<b>Nama</b>", small), Paragraph(": "+escape(str(student_name)), small)],
+        [Paragraph("<b>Tanggal Rekap</b>", small), Paragraph(": "+escape(recap_date), small)],
+        [Paragraph("<b>Bulan Rekap</b>", small), Paragraph(": "+escape(month_label), small)],
         [Paragraph("<b>Kelas</b>", small), Paragraph(": "+escape(str(class_name or "-")), small)],
-        *([[Paragraph("<b>Tempat PKL</b>", small), Paragraph(": "+escape(str(workplace)), small)]] if student_id else []),
-        [Paragraph("<b>Pembimbing</b>", small), Paragraph(": "+escape(str(supervisor)), small)],
     ]
     info_table=Table(info,colWidths=[28*mm,156*mm],hAlign="LEFT")
     info_table.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),0),
                                     ("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1)]))
-    story += [info_table, Spacer(1, 4*mm)]
+    story += [info_table, Spacer(1, 2*mm)]
+    if student_id and student_name:
+        story += [Paragraph("Nama Siswa: <b>" + escape(str(student_name)) + "</b>", small), Spacer(1, 3*mm)]
+    else:
+        story.append(Spacer(1, 2*mm))
     if student_id:
         headers = [Paragraph("<b>Timestamp</b>",center),Paragraph("<b>Kegiatan</b>",center),
                    Paragraph("<b>Foto</b>",center)]
@@ -892,15 +896,7 @@ def report_pdf():
         ("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),
         ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
     ]))
-    story += [table, Spacer(1,12*mm)]
-    signatures=Table([
-        [Paragraph("Mengetahui,",center),Paragraph("Pembimbing DU/DI",center)],
-        [Paragraph("Guru Pembimbing Prakerin",center),Paragraph("",center)],
-        ["",""],
-        [Paragraph("____________________________",center),Paragraph("____________________________",center)]
-    ],colWidths=[92*mm,92*mm],rowHeights=[5*mm,5*mm,18*mm,6*mm])
-    signatures.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("ALIGN",(0,0),(-1,-1),"CENTER")]))
-    story.append(signatures)
+    story += [table, Spacer(1, 4*mm)]
     def page_num(canvas, document):
         canvas.saveState()
         canvas.setFont("Helvetica",7)
