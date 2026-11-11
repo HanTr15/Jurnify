@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Jurnify{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <h3>Dashboard Jurnify</h3>
+</div>
+<div class="page-content">
+  <section class="row">
+    <div class="col-12 col-lg-9">
+      <div class="row">
+        <div class="col-6 col-lg-3 col-md-6">
+          <div class="card"><div class="card-body px-4 py-4-5"><div class="row">
+            <div class="col-md-4 col-lg-12 col-xl-12 col-xxl-5 d-flex justify-content-start"><div class="stats-icon purple mb-2 mazer-stat-icon"><i class="bi bi-journal-text"></i></div></div>
+            <div class="col-md-8 col-lg-12 col-xl-12 col-xxl-7"><h6 class="text-muted font-semibold">Total Jurnal</h6><h6 class="font-extrabold mb-0">{{ stats.total }}</h6></div>
+          </div></div></div>
+        </div>
+        <div class="col-6 col-lg-3 col-md-6">
+          <div class="card"><div class="card-body px-4 py-4-5"><div class="row">
+            <div class="col-md-4 col-lg-12 col-xl-12 col-xxl-5 d-flex justify-content-start"><div class="stats-icon blue mb-2 mazer-stat-icon"><i class="bi bi-hourglass-split"></i></div></div>
+            <div class="col-md-8 col-lg-12 col-xl-12 col-xxl-7"><h6 class="text-muted font-semibold">Menunggu</h6><h6 class="font-extrabold mb-0">{{ stats.waiting }}</h6></div>
+          </div></div></div>
+        </div>
+        <div class="col-6 col-lg-3 col-md-6">
+          <div class="card"><div class="card-body px-4 py-4-5"><div class="row">
+            <div class="col-md-4 col-lg-12 col-xl-12 col-xxl-5 d-flex justify-content-start"><div class="stats-icon green mb-2 mazer-stat-icon"><i class="bi bi-check2-circle"></i></div></div>
+            <div class="col-md-8 col-lg-12 col-xl-12 col-xxl-7"><h6 class="text-muted font-semibold">Disetujui</h6><h6 class="font-extrabold mb-0">{{ stats.approved }}</h6></div>
+          </div></div></div>
+        </div>
+        <div class="col-6 col-lg-3 col-md-6">
+          <div class="card"><div class="card-body px-4 py-4-5"><div class="row">
+            <div class="col-md-4 col-lg-12 col-xl-12 col-xxl-5 d-flex justify-content-start"><div class="stats-icon red mb-2 mazer-stat-icon"><i class="bi bi-x-circle"></i></div></div>
+            <div class="col-md-8 col-lg-12 col-xl-12 col-xxl-7"><h6 class="text-muted font-semibold">Ditolak</h6><h6 class="font-extrabold mb-0">{{ stats.rejected }}</h6></div>
+          </div></div></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header"><h4>Jurnal Terbaru</h4></div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-hover table-lg align-middle">
+                  <thead><tr><th>Nama Siswa</th><th>Kelas</th><th>Tanggal</th><th>Kehadiran</th><th>Verifikasi</th></tr></thead>
+                  <tbody>
+                  {% for j in recent %}
+                    <tr>
+                      <td><span class="font-bold">{{ j.full_name or '-' }}</span></td>
+                      <td>{{ j.class_name }}</td><td>{{ j.attendance_date }}</td>
+                      <td><span class="badge bg-light-secondary">{{ j.status }}</span></td>
+                      <td>
+                        {% if j.verification_status == 'Disetujui' %}<span class="badge bg-light-success">{{ j.verification_status }}</span>
+                        {% elif j.verification_status == 'Ditolak' %}<span class="badge bg-light-danger">{{ j.verification_status }}</span>
+                        {% else %}<span class="badge bg-light-warning">{{ j.verification_status }}</span>{% endif %}
+                      </td>
+                    </tr>
+                  {% else %}
+                    <tr><td colspan="5" class="text-center text-muted py-4">Belum ada jurnal yang masuk.</td></tr>
+                  {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-12 col-xl-4">
+          <div class="card">
+            <div class="card-header"><h4>Status Jurnal</h4></div>
+            <div class="card-body">
+              <div class="d-flex justify-content-between mb-3"><span>Menunggu verifikasi</span><strong>{{ stats.waiting }}</strong></div>
+              <div class="progress progress-primary mb-4"><div class="progress-bar" role="progressbar" style="width: {{ (stats.waiting / stats.total * 100) if stats.total else 0 }}%"></div></div>
+              <div class="d-flex justify-content-between mb-3"><span>Disetujui</span><strong>{{ stats.approved }}</strong></div>
+              <div class="progress progress-success mb-4"><div class="progress-bar" role="progressbar" style="width: {{ (stats.approved / stats.total * 100) if stats.total else 0 }}%"></div></div>
+              <div class="d-flex justify-content-between mb-3"><span>Ditolak</span><strong>{{ stats.rejected }}</strong></div>
+              <div class="progress progress-danger"><div class="progress-bar" role="progressbar" style="width: {{ (stats.rejected / stats.total * 100) if stats.total else 0 }}%"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-xl-8">
+          <div class="card">
+            <div class="card-header"><h4>Akun Kelas</h4></div>
+            <div class="card-body">
+              <div class="table-responsive"><table class="table table-hover mb-0">
+                <thead><tr><th>Kelas</th><th>Username</th><th>Jumlah Siswa</th><th>Aksi</th></tr></thead>
+                <tbody>
+                {% for c in class_accounts %}
+                  <tr><td class="font-bold">{{ c.class_name }}</td><td><code>{{ c.username }}</code></td><td>{{ c.student_count }}</td>
+                    <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('students') }}">Kelola akun</a></td></tr>
+                {% else %}<tr><td colspan="4" class="text-center text-muted">Belum ada akun kelas.</td></tr>{% endfor %}
+                </tbody>
+              </table></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-3">
+      <div class="card">
+        <div class="card-body py-4 px-4">
+          <div class="d-flex align-items-center">
+            <div class="avatar avatar-xl bg-primary text-white d-flex align-items-center justify-content-center"><i class="bi bi-person-fill"></i></div>
+            <div class="ms-3 name"><h5 class="font-bold">Administrator</h5><h6 class="text-muted mb-0">Admin Jurnify</h6></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h4>Menu Cepat</h4></div>
+        <div class="card-content pb-4">
+          <a class="d-flex align-items-center px-4 py-3 text-dark" href="{{ url_for('students') }}"><i class="bi bi-people-fill text-primary fs-5"></i><span class="ms-3">Kelola Data Siswa</span></a>
+          <a class="d-flex align-items-center px-4 py-3 text-dark" href="{{ url_for('verification_queue') }}"><i class="bi bi-clipboard-check-fill text-success fs-5"></i><span class="ms-3">Verifikasi Jurnal</span></a>
+          <a class="d-flex align-items-center px-4 py-3 text-dark" href="{{ url_for('report') }}"><i class="bi bi-file-earmark-bar-graph-fill text-warning fs-5"></i><span class="ms-3">Lihat Rekap Jurnal</span></a>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h4>Ringkasan Akun</h4></div>
+        <div class="card-body">
+          <h6 class="text-muted font-semibold">Jumlah akun kelas</h6>
+          <h3 class="font-extrabold mb-0">{{ class_accounts|length }}</h3>
+          <hr>
+          <p class="text-muted mb-0">Akun digunakan bersama oleh siswa dalam kelas masing-masing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

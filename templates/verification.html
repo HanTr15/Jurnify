@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block content %}
+<h2 class="fw-bold mb-1">Verifikasi Jurnal</h2><p class="text-muted">Periksa foto dan informasi sebelum menyetujui jurnal.</p>
+<div class="card"><div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Siswa / PKL</th><th>Tanggal & status</th><th>Bukti foto</th><th>Timestamp</th><th>Verifikasi</th></tr></thead><tbody>
+{% for j in journals %}<tr><td><strong>{{ j.full_name }}</strong><div class="small text-muted">Tempat PKL: {{ j.workplace or "-" }}</div><div class="small text-muted">Pembimbing: {{ j.supervisor or "-" }}</div></td><td>{{ j.attendance_date }}<div>{{ j.status }}</div></td><td><a href="{{ url_for('photo',filename=j.photo_filename) }}" target="_blank">Lihat foto</a></td><td class="small">{{ j.submitted_at }}</td><td>
+<span class="badge text-bg-secondary">{{ j.verification_status }}</span>
+{% if j.verification_status == 'Menunggu' %}
+<form method="post" action="{{ url_for('verify_journal',journal_id=j.id) }}" class="mt-2">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input class="form-control form-control-sm mb-2" name="verification_note" placeholder="Catatan (opsional)">
+<div class="d-flex gap-1"><button name="action" value="Disetujui" class="btn btn-success btn-sm">Setujui</button><button name="action" value="Ditolak" class="btn btn-outline-danger btn-sm">Tolak</button></div></form>
+{% elif j.verification_note %}<div class="small text-muted mt-1">{{ j.verification_note }}</div>{% endif %}
+</td></tr>{% else %}<tr><td colspan="5" class="text-center text-muted py-4">Belum ada jurnal.</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <div><h2 class="fw-bold mb-1">Rekap Jurnal PKL</h2><p class="text-muted mb-0">Rekap kelas menampilkan jumlah kehadiran. Pilih siswa untuk melihat detail jurnal per pengiriman.</p></div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-primary" data-no-loading href="{{ url_for('report_pdf', class_id=class_id, start=start, end=end, student_id=student_id) }}">Export PDF</a>
+    <a class="btn btn-outline-secondary" data-no-loading href="{{ url_for('report_csv', class_id=class_id, start=start, end=end, student_id=student_id) }}">Export CSV</a>
+  </div>
+</div>
+<div class="card mb-3"><div class="card-body">
+<form class="row g-2 align-items-end">
+  <div class="col-md-3"><label class="form-label">Pilih kelas</label><select class="form-select" name="class_id" onchange="this.form.submit()"><option value="">Semua kelas</option>{% for c in classes %}<option value="{{ c.id }}" {% if class_id|string == c.id|string %}selected{% endif %}>{{ c.full_name }}</option>{% endfor %}</select></div>
+  <div class="col-md-2"><label class="form-label">Dari tanggal</label><input class="form-control" type="date" name="start" value="{{ start }}"></div>
+  <div class="col-md-2"><label class="form-label">Sampai tanggal</label><input class="form-control" type="date" name="end" value="{{ end }}"></div>
+  <div class="col-md-3"><label class="form-label">Siswa (opsional)</label><select class="form-select" name="student_id"><option value="">Rekap per kelas</option>{% for s in students %}<option value="{{ s.id }}" {% if student_id|string == s.id|string %}selected{% endif %}>{{ s.full_name }}</option>{% endfor %}</select></div>
+  <div class="col-md-2 d-flex gap-2"><button class="btn btn-primary">Terapkan</button><a class="btn btn-light" href="{{ url_for('report') }}">Reset</a></div>
+</form></div></div>
+{% if student_id %}
+<div class="card">
+  <div class="card-header bg-transparent py-3"><h5 class="mb-1">Detail jurnal per siswa</h5><p class="text-muted small mb-0">Tempat PKL: {{ journals[0].workplace if journals else "-" }}. Menampilkan waktu pengiriman, kegiatan, dan foto.</p></div>
+  <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Timestamp</th><th>Kegiatan</th><th>Foto</th></tr></thead><tbody>
+    {% for j in journals %}<tr>
+      <td class="text-nowrap">{{ j.submitted_at }}</td>
+      <td style="min-width:260px;white-space:pre-wrap">{{ j.activity or j.note or '-' }}</td>
+      <td>{% if j.photo_filename %}<a href="{{ url_for('photo',filename=j.photo_filename) }}" target="_blank" rel="noopener">Lihat foto</a>{% else %}-{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="3" class="text-center text-muted py-4">Belum ada jurnal untuk siswa dan periode ini.</td></tr>{% endfor %}
+    </tbody></table></div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-header bg-transparent py-3"><h5 class="mb-1">Rekap kehadiran per siswa</h5><p class="text-muted small mb-0">Jumlah dihitung berdasarkan jurnal pada rentang tanggal yang dipilih.</p></div>
+  <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Nama siswa</th><th>Tempat PKL</th><th class="text-center">Izin</th><th class="text-center">Sakit</th><th class="text-center">Hadir</th><th class="text-center">Total</th></tr></thead>
+    <tbody>{% for s in summary %}<tr><td class="fw-semibold">{{ s.full_name }}</td><td>{{ s.workplace or "-" }}</td><td class="text-center">{{ s.izin }}</td><td class="text-center">{{ s.sakit }}</td><td class="text-center">{{ s.hadir }}</td><td class="text-center fw-bold">{{ s.total }}</td></tr>
+    {% else %}<tr><td colspan="6" class="text-center text-muted py-4">Belum ada siswa pada filter kelas ini.</td></tr>{% endfor %}</tbody>
+    {% if summary %}<tfoot><tr class="fw-bold"><td>Total kelas</td><td>-</td><td class="text-center">{{ summary|sum(attribute='izin') }}</td><td class="text-center">{{ summary|sum(attribute='sakit') }}</td><td class="text-center">{{ summary|sum(attribute='hadir') }}</td><td class="text-center">{{ summary|sum(attribute='total') }}</td></tr></tfoot>{% endif %}
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

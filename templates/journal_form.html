@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block content %}
+<div class="student-form-page"><div class="row justify-content-center"><div class="col-lg-8"><div class="mb-3"><a href="{{ url_for('dashboard') }}" class="text-decoration-none">← Kembali</a></div>
+<div class="card student-form-card shadow-sm"><div class="card-body p-4"><h2 class="fw-bold">Isi Jurnal PKL</h2><p class="text-muted">Foto bukti wajib disertakan untuk semua status kehadiran.</p>
+<div class="profile-strip student-profile-strip mb-4"><strong>{{ profile.full_name }}</strong><br>Pilih nama siswa yang mengisi jurnal di bawah ini.</div>
+<form method="post" enctype="multipart/form-data">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<div class="mb-3"><label class="form-label">Nama siswa</label><select class="form-select" name="student_id" required><option value="">Pilih nama siswa</option>{% for student in class_students %}<option value="{{ student.id }}">{{ student.full_name }}</option>{% endfor %}</select></div>
+<div class="mb-3"><label class="form-label">Nama tempat PKL</label><input type="text" class="form-control" id="workplaceInput" name="workplace" maxlength="180" placeholder="Contoh: PT Maju Teknologi" required><div class="form-text" id="workplaceHelp">Isi sekali saat pertama kali mengirim jurnal. Nama tempat PKL akan disimpan untuk siswa ini.</div></div>
+<div class="mb-3"><label class="form-label">Tanggal kehadiran</label><input type="date" class="form-control" name="attendance_date" value="{{ today }}" max="{{ today }}" required></div>
+<div class="mb-3"><label class="form-label">Status kehadiran</label><select class="form-select" name="status" required><option value="">Pilih status</option><option>Hadir</option><option>Izin</option><option>Sakit</option></select></div>
+<div class="mb-3"><label class="form-label">Bukti foto <span class="text-danger">*</span></label><input class="form-control" type="file" name="photo" accept="image/jpeg,image/png,image/webp" required><div class="form-text">JPG, PNG, atau WEBP. Maksimal 5 MB. Untuk Hadir unggah bukti kehadiran; untuk Izin/Sakit unggah foto bukti pendukung.</div></div>
+<div class="mb-3"><label class="form-label">Kegiatan</label><textarea class="form-control" name="activity" rows="3" placeholder="Tuliskan pekerjaan atau kegiatan yang dilakukan" required></textarea></div>
+<div class="mb-3"><label class="form-label">Catatan tambahan (opsional)</label><textarea class="form-control" name="note" rows="2" placeholder="Catatan tambahan"></textarea></div>
+<button class="btn btn-primary">Kirim jurnal</button></form></div></div></div></div></div>
+{% endblock %}
+{% block scripts %}<script>
+const studentSelect=document.querySelector('select[name="student_id"]');
+const workplaceInput=document.getElementById('workplaceInput');
+const workplaceHelp=document.getElementById('workplaceHelp');
+const savedWorkplaces={};
+{% for student in class_students %}savedWorkplaces[{{ student.id|tojson }}]={{ (student.workplace or '')|tojson }};{% endfor %}
+function syncWorkplace(){
+  const saved=savedWorkplaces[studentSelect.value]||'';
+  workplaceInput.value=saved;
+  workplaceInput.readOnly=Boolean(saved);
+  workplaceInput.required=!saved;
+  workplaceHelp.textContent=saved ? 'Tempat PKL sudah tersimpan dan tidak perlu diisi ulang.' : 'Isi sekali saat pertama kali mengirim jurnal. Nama tempat PKL akan disimpan untuk siswa ini.';
+}
+studentSelect.addEventListener('change',syncWorkplace);
+syncWorkplace();
+</script>{% endblock %}

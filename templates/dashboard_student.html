@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Dashboard Kelas | Jurnify{% endblock %}
+{% block content %}
+<div class="student-shell">
+  <section class="student-welcome">
+    <div><span class="student-eyebrow">RUANG KELAS</span><h1>{{ profile.full_name }}</h1><p>Kelola jurnal Praktik Kerja Lapangan dan pantau status pengiriman jurnal siswa.</p></div>
+    <a class="btn btn-primary student-primary-action" href="{{ url_for('add_journal') }}"><i class="bi bi-plus-lg"></i> Isi jurnal</a>
+  </section>
+  <section class="student-metrics">
+    <article class="student-metric"><span>Total jurnal</span><strong>{{ journals|length }}</strong><small>Seluruh jurnal kelas</small></article>
+    <article class="student-metric"><span>Menunggu</span><strong>{{ journals|selectattr('verification_status','equalto','Menunggu')|list|length }}</strong><small>Belum diverifikasi</small></article>
+    <article class="student-metric"><span>Disetujui</span><strong>{{ journals|selectattr('verification_status','equalto','Disetujui')|list|length }}</strong><small>Sudah disetujui</small></article>
+    <article class="student-metric"><span>Ditolak</span><strong>{{ journals|selectattr('verification_status','equalto','Ditolak')|list|length }}</strong><small>Perlu diperiksa</small></article>
+  </section>
+  <section class="student-info-panel">
+    <div class="student-panel-heading"><div><h2>Daftar siswa</h2><p>Satu akun digunakan bersama oleh seluruh siswa dalam kelas.</p></div><span class="student-count">{{ class_students|length }} siswa</span></div>
+    <div class="student-roster">{% for student in class_students %}<span>{{ student.full_name }}</span>{% else %}<p>Belum ada siswa terdaftar. Hubungi administrator.</p>{% endfor %}</div>
+  </section>
+  <section class="student-info-panel student-history">
+    <div class="student-panel-heading"><div><h2>Riwayat pengisian jurnal</h2><p>Pilih nama kamu untuk melihat waktu pengiriman dan status jurnal milikmu sendiri.</p></div></div>
+    <div class="student-history-filter">
+      <form method="get" action="{{ url_for('dashboard') }}">
+        <label for="student-history-select">Tampilkan riwayat</label>
+        <select class="form-select" id="student-history-select" name="student_id" onchange="this.form.submit()">
+          <option value="">Semua siswa di kelas</option>
+          {% for student in class_students %}
+          <option value="{{ student.id }}" {% if selected_student|string == student.id|string %}selected{% endif %}>{{ student.full_name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% if selected_student_name %}<span class="student-history-selected">Menampilkan jurnal: <strong>{{ selected_student_name }}</strong></span>{% else %}<span class="student-history-selected">Pilih nama kamu agar hanya jurnalmu yang ditampilkan.</span>{% endif %}
+    </div>
+    <div class="table-responsive"><table class="table student-table align-middle mb-0"><thead><tr><th>Tanggal</th><th>Nama siswa</th><th>Kehadiran</th><th>Foto</th><th>Verifikasi</th><th>Waktu kirim</th><th>Catatan</th></tr></thead><tbody>
+    {% for j in journals %}<tr><td class="text-nowrap">{{ j.attendance_date }}</td><td class="fw-semibold">{{ j.student_name or '-' }}</td><td>{{ j.status }}</td><td><a href="{{ url_for('photo',filename=j.photo_filename) }}" target="_blank" rel="noopener">Lihat foto</a></td><td><span class="student-status status-{{ j.verification_status|lower }}">{{ j.verification_status }}</span>{% if j.verification_note %}<small class="student-verification-note">{{ j.verification_note }}</small>{% endif %}</td><td class="text-nowrap">{{ j.submitted_at }}</td><td>{{ j.note or '-' }}</td></tr>
+    {% else %}<tr><td colspan="7" class="student-empty">{% if selected_student_name %}Belum ada jurnal yang dikirim atas nama {{ selected_student_name }}.{% else %}Belum ada jurnal yang dikirim oleh kelas ini. Klik “Isi jurnal” untuk membuat pengiriman pertama.{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+</div>
+{% endblock %}
