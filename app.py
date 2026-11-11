@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, session, abort, send_from_directory, send_file, Response
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from vercel.blob import sync as vercel_blob
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -38,8 +38,35 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SECURE=bool(os.environ.get("VERCEL")),
     SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_PATH="/",
+    SESSION_COOKIE_NAME="jurnify_session",
+    # Form login dapat dibuka lama; token CSRF tetap memiliki masa berlaku terbatas.
+    WTF_CSRF_TIME_LIMIT=8 * 60 * 60,
+    WTF_CSRF_SSL_STRICT=True,
 )
 csrf = CSRFProtect(app)
+
+@app.after_request
+def prevent_dynamic_page_caching(response):
+    # Jangan biarkan halaman form ber-CSRF token disimpan cache browser/CDN.
+    # Ini penting pada deployment serverless agar token lama tidak dipakai ulang.
+    if request.endpoint != "static":
+        response.headers["Cache-Control"] = "private, no-store, no-cache, max-age=0, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Vary"] = "Cookie"
+    return response
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    # Token/session yang hilang atau kedaluwarsa diarahkan ke form baru,
+    # bukan menampilkan halaman 400 mentah kepada pengguna.
+    app.logger.warning("CSRF ditolak pada %s: %s", request.path, error.description)
+    if request.endpoint == "login" or request.path.rstrip("/") == "/login":
+        flash("Sesi login kedaluwarsa atau cookie tidak terbaca. Silakan masuk kembali.", "warning")
+        return redirect(url_for("login"), code=303)
+    return render_template("error.html", code=400,
+                           message="Sesi formulir kedaluwarsa. Muat ulang halaman lalu coba lagi."), 400
+
 if not os.environ.get("VERCEL"):
     UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -522,6 +549,32 @@ def update_class_password(class_id):
             (generate_password_hash(new_password), encrypt_class_password(new_password), class_id)
         )
     flash(f"Password akun kelas {account['full_name']} berhasil diperbarui.", "success")
+    return redirect(url_for("students"))
+
+@app.route("/admin/akun-kelas/<int:class_id>/username", methods=["POST"])
+@login_required
+@admin_required
+def update_class_username(class_id):
+    new_username = request.form.get("username", "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,39}", new_username):
+        flash("Username harus 3–40 karakter, diawali huruf/angka, dan hanya berisi huruf kecil, angka, titik, garis bawah, atau tanda hubung.", "danger")
+        return redirect(url_for("students"))
+    with get_db() as conn:
+        account = conn.execute(
+            "SELECT id,full_name FROM users WHERE id=%s AND role='student'",
+            (class_id,)
+        ).fetchone()
+        if not account:
+            abort(404)
+        duplicate = conn.execute(
+            "SELECT id FROM users WHERE lower(username)=lower(%s) AND id<>%s",
+            (new_username, class_id)
+        ).fetchone()
+        if duplicate:
+            flash("Username tersebut sudah digunakan akun lain.", "danger")
+            return redirect(url_for("students"))
+        conn.execute("UPDATE users SET username=%s WHERE id=%s", (new_username, class_id))
+    flash(f"Username akun kelas {account['full_name']} berhasil diubah menjadi {new_username}.", "success")
     return redirect(url_for("students"))
 
 @app.route("/admin/akun-kelas/<int:class_id>/nama", methods=["POST"])

@@ -52,8 +52,8 @@
       </div>
     </div>
   </div>
-  <button type="button" class="mobile-sidebar-toggle" id="mobileSidebarToggle" aria-label="Buka menu navigasi" aria-controls="sidebar" aria-expanded="false">
-    <i class="bi bi-list"></i><span>Menu</span>
+  <button type="button" class="mobile-sidebar-toggle" id="mobileSidebarToggle" aria-label="Buka menu navigasi" aria-controls="sidebar" aria-expanded="false" title="Buka menu">
+    <i class="bi bi-list" aria-hidden="true"></i>
   </button>
   <div id="main">
     <div class="page-content">
@@ -114,7 +114,17 @@
    }
    setExpanded();
  });
- if(mobileToggle)mobileToggle.addEventListener('click',()=>{body.classList.toggle('mobile-sidebar-open');setExpanded()});
+ if(mobileToggle)mobileToggle.addEventListener('click',()=>{
+   if(!mobile())return;
+   body.classList.add('mobile-sidebar-open');
+   setExpanded();
+ });
+ const closeLink=document.querySelector('#sidebar .sidebar-hide');
+ if(closeLink)closeLink.addEventListener('click',e=>{
+   e.preventDefault();
+   body.classList.remove('mobile-sidebar-open');
+   setExpanded();
+ });
  document.querySelectorAll('#sidebar a.sidebar-link').forEach(link=>link.addEventListener('click',()=>{if(mobile()){body.classList.remove('mobile-sidebar-open');setExpanded()}}));
  if(backdrop)backdrop.addEventListener('click',()=>{body.classList.remove('mobile-sidebar-open');setExpanded()});
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){body.classList.remove('mobile-sidebar-open');setExpanded()}});
