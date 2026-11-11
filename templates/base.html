@@ -52,6 +52,9 @@
       </div>
     </div>
   </div>
+  <button type="button" class="mobile-sidebar-toggle" id="mobileSidebarToggle" aria-label="Buka menu navigasi" aria-controls="sidebar" aria-expanded="false">
+    <i class="bi bi-list"></i><span>Menu</span>
+  </button>
   <div id="main">
     <div class="page-content">
 {% else %}
@@ -85,28 +88,34 @@
 (function(){
  const body=document.body;
  const burger=document.querySelector('.burger-btn');
+ const mobileToggle=document.getElementById('mobileSidebarToggle');
  const backdrop=document.getElementById('sidebarBackdrop');
- if(!burger)return;
+ if(!burger && !mobileToggle)return;
  const mobile=()=>window.matchMedia('(max-width: 1199.98px)').matches;
  const setExpanded=()=>{
    const expanded=mobile()?body.classList.contains('mobile-sidebar-open'):!body.classList.contains('sidebar-collapsed');
-   burger.setAttribute('aria-expanded',String(expanded));
-   burger.setAttribute('title',expanded?'Ciutkan sidebar':'Perluas sidebar');
-   const label=burger.querySelector('span'); if(label)label.textContent=expanded?'Ciutkan menu':'Perluas menu';
-   const icon=burger.querySelector('i'); if(icon)icon.className=expanded?'bi bi-layout-sidebar-inset':'bi bi-layout-sidebar-inset-reverse';
+   if(burger){
+     burger.setAttribute('aria-expanded',String(expanded));
+     burger.setAttribute('title',expanded?'Ciutkan sidebar':'Perluas sidebar');
+     const label=burger.querySelector('span'); if(label)label.textContent=expanded?'Ciutkan menu':'Perluas menu';
+     const icon=burger.querySelector('i'); if(icon)icon.className=expanded?'bi bi-layout-sidebar-inset':'bi bi-layout-sidebar-inset-reverse';
+   }
+   if(mobileToggle){
+     mobileToggle.setAttribute('aria-expanded',String(body.classList.contains('mobile-sidebar-open')));
+     mobileToggle.setAttribute('aria-label',body.classList.contains('mobile-sidebar-open')?'Tutup menu navigasi':'Buka menu navigasi');
+     const icon=mobileToggle.querySelector('i'); if(icon)icon.className=body.classList.contains('mobile-sidebar-open')?'bi bi-x-lg':'bi bi-list';
+   }
  };
- burger.addEventListener('click',function(){
-   if(mobile()) {
-     body.classList.toggle('mobile-sidebar-open');
-   } else {
+ if(burger)burger.addEventListener('click',function(){
+   if(mobile()) body.classList.toggle('mobile-sidebar-open');
+   else {
      body.classList.toggle('sidebar-collapsed');
-     try {
-       localStorage.setItem('jurnify.sidebar.collapsed',
-         body.classList.contains('sidebar-collapsed') ? '1' : '0');
-     } catch (_) {}
+     try { localStorage.setItem('jurnify.sidebar.collapsed',body.classList.contains('sidebar-collapsed')?'1':'0'); } catch (_) {}
    }
    setExpanded();
  });
+ if(mobileToggle)mobileToggle.addEventListener('click',()=>{body.classList.toggle('mobile-sidebar-open');setExpanded()});
+ document.querySelectorAll('#sidebar a.sidebar-link').forEach(link=>link.addEventListener('click',()=>{if(mobile()){body.classList.remove('mobile-sidebar-open');setExpanded()}}));
  if(backdrop)backdrop.addEventListener('click',()=>{body.classList.remove('mobile-sidebar-open');setExpanded()});
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){body.classList.remove('mobile-sidebar-open');setExpanded()}});
  window.addEventListener('resize',()=>{
