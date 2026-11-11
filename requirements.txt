@@ -5,4 +5,4 @@ psycopg[binary]>=3.2,<4.0
 cryptography>=42.0,<46.0
 reportlab>=4.2,<5
 Pillow>=10.0,<13
-vercel-blob>=0.5.0,<1.0\n
+vercel-blob>=0.5.0,<1.0
