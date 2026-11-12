@@ -3,7 +3,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "redirects": [
     {
-      "source": "/teknisi",
+      "source": "/it",
       "destination": "https://chat.whatsapp.com/H1nE2XA2H7G8JmiHJDssa1?s=cl&p=a&iam=2",
       "permanent": false
     }
