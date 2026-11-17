@@ -11,7 +11,7 @@ import hmac
 import hashlib
 import base64
 from cryptography.fernet import Fernet, InvalidToken
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from functools import wraps
 from pathlib import Path
 from contextlib import contextmanager
@@ -189,6 +189,21 @@ def init_db():
         conn.execute("ALTER TABLE journals ADD COLUMN IF NOT EXISTS student_id BIGINT REFERENCES students(id) ON DELETE CASCADE")
         conn.execute("ALTER TABLE journals DROP CONSTRAINT IF EXISTS journals_user_id_attendance_date_key")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS journals_class_student_date_unique ON journals(user_id, student_id, attendance_date) WHERE student_id IS NOT NULL")
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS monthly_archives (
+            id BIGSERIAL PRIMARY KEY,
+            class_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            archive_year INTEGER NOT NULL,
+            archive_month INTEGER NOT NULL CHECK(archive_month BETWEEN 1 AND 12),
+            pdf_data BYTEA NOT NULL,
+            journal_count INTEGER NOT NULL DEFAULT 0,
+            waiting_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'Menunggu konfirmasi' CHECK(status IN ('Menunggu konfirmasi','Selesai')),
+            created_at TEXT NOT NULL,
+            purged_at TEXT,
+            UNIQUE(class_user_id, archive_year, archive_month)
+        )
+        """)
         admin = conn.execute("SELECT id FROM users WHERE username=%s", ("admin",)).fetchone()
         if not admin:
             if os.environ.get("VERCEL") and not os.environ.get("ADMIN_PASSWORD"):
@@ -365,6 +380,8 @@ def add_journal():
         workplace = request.form.get("workplace", "").strip()
         submit_lat = request.form.get("submit_lat", "").strip()
         submit_lng = request.form.get("submit_lng", "").strip()
+        submit_accuracy = request.form.get("submit_accuracy", "").strip()
+        submit_timestamp = request.form.get("submit_timestamp", "").strip()
         photo = request.files.get("photo")
         filename = None
         try:
@@ -391,28 +408,31 @@ def add_journal():
                 target_lat = selected_student["workplace_lat"]
                 target_lng = selected_student["workplace_lng"]
 
+                if not submit_lat or not submit_lng or not submit_accuracy or not submit_timestamp:
+                    raise ValueError("Izin lokasi wajib diaktifkan dan lokasi GPS harus dideteksi ulang sebelum jurnal dikirim.")
+                try:
+                    cur_lat, cur_lng = float(submit_lat), float(submit_lng)
+                    accuracy, captured_ms = float(submit_accuracy), int(submit_timestamp)
+                except (ValueError, TypeError):
+                    raise ValueError("Data lokasi GPS tidak valid. Deteksi ulang lokasi Anda.")
+                if not (-90 <= cur_lat <= 90 and -180 <= cur_lng <= 180):
+                    raise ValueError("Koordinat GPS tidak valid.")
+                if accuracy <= 0 or accuracy > 75:
+                    raise ValueError("Akurasi GPS terlalu rendah (maksimal 75 meter). Aktifkan GPS presisi tinggi dan coba lagi.")
+                current_ms = int(time.time() * 1000)
+                if captured_ms > current_ms + 5000 or current_ms - captured_ms > 120000:
+                    raise ValueError("Data lokasi kedaluwarsa. Deteksi ulang lokasi tepat sebelum mengirim jurnal.")
+
                 if not has_location:
                     if not workplace:
                         raise ValueError("Nama tempat PKL wajib diisi saat pertama kali mendaftar.")
-                    if not submit_lat or not submit_lng:
-                        raise ValueError("Titik lokasi GPS tempat PKL wajib ditentukan saat pertama kali mengisi jurnal.")
-                    try:
-                        wp_lat = float(submit_lat)
-                        wp_lng = float(submit_lng)
-                    except ValueError:
-                        raise ValueError("Format koordinat titik lokasi GPS tidak valid.")
-                    conn.execute(
-                        "UPDATE students SET workplace=%s, workplace_lat=%s, workplace_lng=%s WHERE id=%s",
-                        (workplace, wp_lat, wp_lng, int(student_id))
-                    )
-                    target_lat = wp_lat
-                    target_lng = wp_lng
+                    conn.execute("UPDATE students SET workplace=%s, workplace_lat=%s, workplace_lng=%s WHERE id=%s",
+                                 (workplace, cur_lat, cur_lng, int(student_id)))
+                    target_lat, target_lng = cur_lat, cur_lng
 
-                cur_lat = float(submit_lat) if submit_lat else None
-                cur_lng = float(submit_lng) if submit_lng else None
-                distance = None
-                if cur_lat is not None and cur_lng is not None and target_lat is not None and target_lng is not None:
-                    distance = calculate_distance(cur_lat, cur_lng, target_lat, target_lng)
+                distance = calculate_distance(cur_lat, cur_lng, target_lat, target_lng)
+                if distance is None or distance > 250:
+                    raise ValueError(f"Lokasi tidak sesuai dengan tempat PKL (jarak {round(distance or 0)} meter; batas 250 meter). Jurnal tidak dapat dikirim.")
 
                 conn.execute("""
                     INSERT INTO journals
@@ -953,6 +973,235 @@ def verify_journal(journal_id):
         """, (action, session["user_id"], now(), note, journal_id))
     flash(f"Jurnal telah {action.lower()}.", "success")
     return redirect(url_for("verification_queue"))
+
+def build_monthly_archive_pdf(class_row, year, month, students, journals):
+    """Buat satu PDF arsip kelas berisi ringkasan, detail jurnal, dan foto."""
+    from io import BytesIO
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage, PageBreak
+    from xml.sax.saxutils import escape
+
+    month_names = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
+    output = BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=12*mm, leftMargin=12*mm,
+                            topMargin=12*mm, bottomMargin=15*mm,
+                            title=f"Arsip Jurnal {class_row['full_name']} {month_names[month-1]} {year}")
+    styles = getSampleStyleSheet()
+    title = ParagraphStyle("ArchiveTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=14, leading=18, alignment=TA_CENTER)
+    sub = ParagraphStyle("ArchiveSub", parent=styles["Normal"], fontSize=9, leading=12, alignment=TA_CENTER)
+    cell = ParagraphStyle("ArchiveCell", parent=styles["Normal"], fontSize=7, leading=9, alignment=TA_LEFT, wordWrap="CJK")
+    center = ParagraphStyle("ArchiveCenter", parent=cell, alignment=TA_CENTER)
+    story = [Paragraph("ARSIP JURNAL PRAKTIK KERJA LAPANGAN", title),
+             Paragraph(escape(str(class_row['full_name'])) + " · " + month_names[month-1] + " " + str(year), sub), Spacer(1, 6*mm)]
+
+    by_student = {}
+    for j in journals:
+        by_student.setdefault(j['student_id'], []).append(j)
+    summary_data = [[Paragraph('<b>Nama Siswa</b>', center), Paragraph('<b>Izin</b>', center),
+                     Paragraph('<b>Sakit</b>', center), Paragraph('<b>Hadir</b>', center), Paragraph('<b>Total</b>', center)]]
+    totals = {'Izin': 0, 'Sakit': 0, 'Hadir': 0}
+    for st in students:
+        own = by_student.get(st['id'], [])
+        counts = {status: sum(1 for j in own if j['status'] == status) for status in totals}
+        for status in totals: totals[status] += counts[status]
+        summary_data.append([Paragraph(escape(st['full_name']), cell), Paragraph(str(counts['Izin']), center),
+                             Paragraph(str(counts['Sakit']), center), Paragraph(str(counts['Hadir']), center),
+                             Paragraph(str(len(own)), center)])
+    summary_data.append([Paragraph('<b>TOTAL KELAS</b>', cell), Paragraph(str(totals['Izin']), center),
+                         Paragraph(str(totals['Sakit']), center), Paragraph(str(totals['Hadir']), center),
+                         Paragraph(str(len(journals)), center)])
+    summary_table = Table(summary_data, colWidths=[94*mm, 18*mm, 18*mm, 18*mm, 18*mm], repeatRows=1)
+    summary_table.setStyle(TableStyle([
+        ('GRID',(0,0),(-1,-1),0.4,colors.grey), ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#eaf1ff')),
+        ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#f1f5f9')), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),4),
+        ('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)]))
+    story += [Paragraph('<b>Rekap Kehadiran</b>', styles['Heading2']), summary_table, Spacer(1, 6*mm),
+              Paragraph('<b>Detail Jurnal dan Foto Bukti</b>', styles['Heading2'])]
+    detail = [[Paragraph('<b>Tanggal / Siswa</b>', center), Paragraph('<b>Status & Kegiatan</b>', center), Paragraph('<b>Foto</b>', center)]]
+    for j in journals:
+        date_text = j['attendance_date'].strftime('%d-%m-%Y') if hasattr(j['attendance_date'], 'strftime') else str(j['attendance_date'])
+        name = j.get('student_name') or '-'
+        left = Paragraph(f"<b>{escape(name)}</b><br/>{escape(date_text)}<br/>{escape(j.get('submitted_at') or '-')}", cell)
+        activity = (j.get('activity') or j.get('note') or '-').strip()
+        right = Paragraph(f"<b>{escape(j['status'])}</b><br/>{escape(activity).replace(chr(10), '<br/>')}", cell)
+        photo_cell = Paragraph('Tidak ada foto', center)
+        if j.get('photo_filename'):
+            try:
+                raw, _ = load_photo(j['photo_filename'])
+                im = PILImage.open(BytesIO(raw)).convert('RGB')
+                im.thumbnail((360, 260))
+                buf = BytesIO(); im.save(buf, format='JPEG', quality=68, optimize=True); buf.seek(0)
+                photo_cell = RLImage(buf, width=42*mm, height=30*mm)
+            except Exception:
+                photo_cell = Paragraph('Foto gagal dimuat', center)
+        detail.append([left, right, photo_cell])
+    detail_table = Table(detail, colWidths=[48*mm, 76*mm, 42*mm], repeatRows=1, splitByRow=1)
+    detail_table.setStyle(TableStyle([
+        ('GRID',(0,0),(-1,-1),0.4,colors.grey), ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#eaf1ff')),
+        ('VALIGN',(0,0),(-1,-1),'MIDDLE'), ('LEFTPADDING',(0,0),(-1,-1),4),
+        ('RIGHTPADDING',(0,0),(-1,-1),4), ('TOPPADDING',(0,0),(-1,-1),5),
+        ('BOTTOMPADDING',(0,0),(-1,-1),5)]))
+    story.append(detail_table)
+    def page_num(canvas, document):
+        canvas.saveState(); canvas.setFont('Helvetica', 7)
+        canvas.drawCentredString(A4[0]/2, 7*mm, f'Jurnify · Arsip {month_names[month-1]} {year} · Halaman {document.page}')
+        canvas.restoreState()
+    doc.build(story, onFirstPage=page_num, onLaterPages=page_num)
+    return output.getvalue()
+
+
+def prepare_monthly_archives(year, month):
+    """Buat arsip yang belum ada; pemanggilan dilakukan saat admin membuka menu arsip."""
+    start_date = date(year, month, 1)
+    end_date = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    with get_db() as conn:
+        classes = conn.execute("""
+            SELECT u.id,u.full_name FROM users u
+            WHERE u.role='student' AND EXISTS (SELECT 1 FROM students s WHERE s.class_user_id=u.id)
+            ORDER BY u.full_name
+        """).fetchall()
+        for cls in classes:
+            exists = conn.execute("SELECT id,journal_count,waiting_count,status FROM monthly_archives WHERE class_user_id=%s AND archive_year=%s AND archive_month=%s",
+                                  (cls['id'], year, month)).fetchone()
+            students = conn.execute("SELECT id,full_name FROM students WHERE class_user_id=%s ORDER BY full_name", (cls['id'],)).fetchall()
+            journals = conn.execute("""
+                SELECT j.*,s.full_name AS student_name FROM journals j
+                LEFT JOIN students s ON s.id=j.student_id
+                WHERE j.user_id=%s AND j.attendance_date >= %s AND j.attendance_date < %s
+                ORDER BY j.attendance_date,s.full_name,j.submitted_at
+            """, (cls['id'], start_date, end_date)).fetchall()
+            if not journals:
+                continue
+            waiting_count = sum(1 for j in journals if j['verification_status'] == 'Menunggu')
+            if exists and exists['status'] == 'Selesai':
+                continue
+            if exists and exists['journal_count'] == len(journals) and exists['waiting_count'] == waiting_count:
+                continue
+            pdf_data = build_monthly_archive_pdf(cls, year, month, students, journals)
+            if exists:
+                conn.execute("UPDATE monthly_archives SET pdf_data=%s,journal_count=%s,waiting_count=%s,created_at=%s WHERE id=%s",
+                             (pdf_data, len(journals), waiting_count, now(), exists['id']))
+            else:
+                conn.execute("""
+                    INSERT INTO monthly_archives
+                    (class_user_id,archive_year,archive_month,pdf_data,journal_count,waiting_count,status,created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,'Menunggu konfirmasi',%s)
+                    ON CONFLICT (class_user_id,archive_year,archive_month) DO NOTHING
+                """, (cls['id'], year, month, pdf_data, len(journals), waiting_count, now()))
+
+
+@app.route("/admin/arsip-bulanan")
+@login_required
+@admin_required
+def monthly_archives():
+    today = date.today()
+    previous = today.replace(day=1) - timedelta(days=1)
+    year = int(request.args.get('year', previous.year))
+    month = int(request.args.get('month', previous.month))
+    if month < 1 or month > 12 or year < 2000 or year > today.year + 1:
+        abort(400)
+    prepare_monthly_archives(year, month)
+    with get_db() as conn:
+        archives = conn.execute("""
+            SELECT a.id,a.archive_year,a.archive_month,a.journal_count,a.waiting_count,a.status,a.created_at,a.purged_at,
+                   u.full_name AS class_name
+            FROM monthly_archives a JOIN users u ON u.id=a.class_user_id
+            WHERE a.archive_year=%s AND a.archive_month=%s
+            ORDER BY u.full_name
+        """, (year, month)).fetchall()
+        available_months = conn.execute("""
+            SELECT DISTINCT archive_year,archive_month FROM monthly_archives
+            ORDER BY archive_year DESC,archive_month DESC
+        """).fetchall()
+    month_names = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
+    return render_template('monthly_archives.html', archives=archives, year=year, month=month,
+                           month_label=month_names[month-1], available_months=available_months)
+
+
+@app.route("/admin/arsip-bulanan/<int:archive_id>.pdf")
+@login_required
+@admin_required
+def download_monthly_archive(archive_id):
+    from io import BytesIO
+    with get_db() as conn:
+        archive = conn.execute("""
+            SELECT a.pdf_data,a.archive_year,a.archive_month,u.full_name AS class_name
+            FROM monthly_archives a JOIN users u ON u.id=a.class_user_id WHERE a.id=%s
+        """, (archive_id,)).fetchone()
+    if not archive:
+        abort(404)
+    filename = f"arsip_{secure_filename(archive['class_name'])}_{archive['archive_year']}_{archive['archive_month']:02d}.pdf"
+    return send_file(BytesIO(bytes(archive['pdf_data'])), mimetype='application/pdf', as_attachment=True, download_name=filename)
+
+
+@app.route("/admin/arsip-bulanan/<int:archive_id>/bersihkan", methods=['POST'])
+@login_required
+@admin_required
+def purge_monthly_archive(archive_id):
+    photo_names = []
+    with get_db() as conn:
+        archive = conn.execute("SELECT * FROM monthly_archives WHERE id=%s FOR UPDATE", (archive_id,)).fetchone()
+        if not archive:
+            abort(404)
+        if archive['status'] == 'Selesai':
+            flash('Data jurnal untuk arsip ini sudah dibersihkan.', 'info')
+            return redirect(url_for('monthly_archives', year=archive['archive_year'], month=archive['archive_month']))
+        period_start = date(archive['archive_year'], archive['archive_month'], 1)
+        period_end = date(archive['archive_year'] + (archive['archive_month']==12), 1 if archive['archive_month']==12 else archive['archive_month']+1, 1)
+        current_count = conn.execute("SELECT COUNT(*) AS n FROM journals WHERE user_id=%s AND attendance_date >= %s AND attendance_date < %s",
+                                     (archive['class_user_id'], period_start, period_end)).fetchone()['n']
+        current_waiting = conn.execute("SELECT COUNT(*) AS n FROM journals WHERE user_id=%s AND attendance_date >= %s AND attendance_date < %s AND verification_status='Menunggu'",
+                                       (archive['class_user_id'], period_start, period_end)).fetchone()['n']
+        if current_count != archive['journal_count']:
+            flash('Ada perubahan jumlah jurnal setelah PDF dibuat. Muat ulang halaman Arsip Bulanan agar PDF diperbarui sebelum menghapus data.', 'warning')
+            return redirect(url_for('monthly_archives', year=archive['archive_year'], month=archive['archive_month']))
+        if current_waiting:
+            flash('Belum bisa dibersihkan karena masih ada jurnal yang menunggu verifikasi. Selesaikan verifikasi lalu muat ulang halaman arsip.', 'warning')
+            return redirect(url_for('monthly_archives', year=archive['archive_year'], month=archive['archive_month']))
+        rows = conn.execute("""
+            SELECT photo_filename FROM journals WHERE user_id=%s
+              AND attendance_date >= %s AND attendance_date < %s
+        """, (archive['class_user_id'], date(archive['archive_year'],archive['archive_month'],1),
+              date(archive['archive_year'] + (archive['archive_month']==12), 1 if archive['archive_month']==12 else archive['archive_month']+1, 1))).fetchall()
+        photo_names = [r['photo_filename'] for r in rows if r.get('photo_filename')]
+        conn.execute("""
+            DELETE FROM journals WHERE user_id=%s AND attendance_date >= %s AND attendance_date < %s
+        """, (archive['class_user_id'], date(archive['archive_year'],archive['archive_month'],1),
+              date(archive['archive_year'] + (archive['archive_month']==12), 1 if archive['archive_month']==12 else archive['archive_month']+1, 1)))
+        conn.execute("UPDATE monthly_archives SET status='Selesai',purged_at=%s WHERE id=%s", (now(), archive_id))
+    # Hapus foto asli setelah transaksi database berhasil; salinannya sudah tertanam di PDF arsip.
+    for filename in photo_names:
+        delete_photo(filename)
+    flash(f"Data jurnal berhasil dibersihkan. {len(photo_names)} foto asli dihapus; foto tetap tersedia di PDF arsip.", 'success')
+    return redirect(url_for('monthly_archives', year=archive['archive_year'], month=archive['archive_month']))
+
+
+@app.route("/admin/jurnal/hapus-semua", methods=["POST"])
+@login_required
+@admin_required
+def delete_all_journals():
+    with get_db() as conn:
+        rows = conn.execute("SELECT photo_filename FROM journals WHERE photo_filename IS NOT NULL").fetchall()
+        photo_names = [row["photo_filename"] for row in rows if row.get("photo_filename")]
+        deleted = conn.execute("DELETE FROM journals RETURNING id").fetchall()
+        conn.execute("DELETE FROM monthly_archives")
+    failed = 0
+    for filename in photo_names:
+        try:
+            delete_photo(filename)
+        except Exception:
+            failed += 1
+            app.logger.exception("Gagal menghapus foto jurnal %s", filename)
+    flash(f"{len(deleted)} data jurnal dihapus. {len(photo_names)-failed} foto bukti ikut dihapus.", "success")
+    if failed:
+        flash(f"{failed} foto gagal dihapus dari penyimpanan; periksa log server.", "warning")
+    return redirect(url_for("dashboard"))
+
 
 @app.route("/admin/rekap")
 @login_required

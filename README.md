@@ -126,3 +126,11 @@ Tes alur berikut sebelum membagikan ke siswa:
 - Migrasi otomatis berjalan ketika aplikasi menerima request pertama. Pastikan `DATABASE_URL` sudah benar sebelum trafik publik diarahkan.
 - Versi ini tidak otomatis memindahkan foto lama yang masih ada di folder `uploads/` ke Blob. Jika ada data foto lama, migrasikan dulu dari server lama dan perbarui referensi `photo_filename` sebelum mematikan server lama.
 - Uji export PDF dan foto dengan data nyata sebelum dipakai operasional sekolah.
+
+## Arsip Bulanan
+
+Menu **Arsip Bulanan** menyiapkan PDF per kelas untuk bulan yang dipilih (secara default bulan sebelumnya) saat admin membuka halaman tersebut. PDF memuat rekap jumlah hadir/izin/sakit, detail jurnal, dan foto bukti yang ditanam langsung ke PDF. Arsip PDF disimpan sebagai `BYTEA` di PostgreSQL agar tetap tersedia pada deployment serverless.
+
+Penghapusan tidak berjalan otomatis. Admin harus mengunduh dan memeriksa PDF, lalu menekan **Bersihkan Data**. Pembersihan diblokir selama masih ada jurnal berstatus Menunggu atau jika jumlah jurnal berubah sejak PDF dibuat. Setelah konfirmasi, jurnal periode itu dihapus dari tabel aktif dan file foto aslinya dihapus dari penyimpanan; salinan foto tetap berada di PDF arsip.
+
+Catatan: pembuatan arsip dipicu saat admin membuka halaman Arsip Bulanan, bukan oleh proses scheduler di background. Dengan deployment Vercel saat ini belum ada Cron Job yang dikonfigurasi.

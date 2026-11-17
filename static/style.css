@@ -887,17 +887,6 @@ code,
   object-fit: contain;
 }
 
-.student-brand span {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--blue);
-  background: var(--blue-light);
-  border: 1px solid var(--blue-border);
-  padding: 4px 10px;
-  border-radius: 20px;
-  white-space: nowrap;
-}
-
 .student-user-badge {
   display: inline-flex;
   align-items: center;
@@ -1728,5 +1717,121 @@ code,
 
   .table-responsive {
     overflow-x: auto;
+  }
+}
+
+/* Final layout refinements: student dashboard + centered mobile controls */
+.student-shell {
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+}
+
+/* Keep the student portal from inheriting a narrow Bootstrap container on laptops. */
+body:has(.student-shell) > .container,
+body:has(.student-shell) .container:has(> .student-shell) {
+  width: 100%;
+  max-width: 1600px;
+}
+
+.mobile-sidebar-toggle {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  line-height: 1 !important;
+}
+
+.mobile-sidebar-toggle i {
+  display: block;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  font-size: 1.45rem;
+}
+
+/* Photo action buttons stay centered and balanced on narrow screens. */
+#openCameraBtn,
+#openGalleryBtn {
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+}
+
+@media (max-width: 767.98px) {
+  .student-shell {
+    max-width: none;
+    padding: .5rem 0 1.25rem;
+  }
+
+  .student-welcome {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 1.25rem;
+    gap: 1rem;
+  }
+
+  .student-primary-action {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .student-metrics {
+    gap: .65rem;
+  }
+
+  .student-metric {
+    min-height: 108px;
+    padding: .9rem;
+  }
+
+  .student-panel-heading {
+    padding: 1rem;
+  }
+
+  .student-roster {
+    padding: 1rem;
+  }
+
+  .student-history-filter {
+    padding: 1rem;
+  }
+
+  .student-form-page {
+    width: 100%;
+    padding: .5rem 0 1.25rem;
+  }
+
+  .student-form-page .d-flex.flex-wrap.gap-2.mb-2 {
+    justify-content: center !important;
+    width: 100%;
+  }
+
+  .student-form-page #openCameraBtn,
+  .student-form-page #openGalleryBtn {
+    min-height: 42px;
+    flex: 1 1 100%;
+    max-width: 320px;
+    margin-inline: auto;
+  }
+
+  .student-form-page .form-text,
+  .student-form-page .text-muted.small {
+    text-align: center;
+  }
+
+  .mobile-sidebar-toggle {
+    top: 12px;
+    left: 12px;
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  .student-shell {
+    max-width: none;
+    padding-inline: .25rem;
   }
 }

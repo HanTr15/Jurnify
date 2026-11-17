@@ -18,6 +18,8 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="submit_lat" id="submitLat">
             <input type="hidden" name="submit_lng" id="submitLng">
+            <input type="hidden" name="submit_accuracy" id="submitAccuracy">
+            <input type="hidden" name="submit_timestamp" id="submitTimestamp">
 
             <!-- Pilih Nama Siswa -->
             <div class="mb-3">
@@ -189,6 +191,9 @@
   const verifyLocationStatus = document.getElementById('verifyLocationStatus');
   const submitLatInput = document.getElementById('submitLat');
   const submitLngInput = document.getElementById('submitLng');
+  const submitAccuracyInput = document.getElementById('submitAccuracy');
+  const submitTimestampInput = document.getElementById('submitTimestamp');
+  let locationVerified = false;
   const journalForm = document.getElementById('journalForm');
 
   // Camera & Photo Elements
@@ -243,17 +248,7 @@
         attribution: '&copy; Google Maps'
       }).addTo(registerMap);
 
-      registerMarker = L.marker([lat, lng], { draggable: true }).addTo(registerMap);
-
-      registerMarker.on('dragend', function(e) {
-        const pos = e.target.getLatLng();
-        setRegisterCoords(pos.lat, pos.lng);
-      });
-
-      registerMap.on('click', function(e) {
-        registerMarker.setLatLng(e.latlng);
-        setRegisterCoords(e.latlng.lat, e.latlng.lng);
-      });
+      registerMarker = L.marker([lat, lng], { draggable: false }).addTo(registerMap);
     } else {
       registerMap.setView([lat, lng], zoom);
       registerMarker.setLatLng([lat, lng]);
@@ -384,7 +379,13 @@
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
       const acc = Math.round(pos.coords.accuracy || 0);
-
+      if (!acc || acc > 75) {
+        registerLocationStatus.innerHTML = '<div class="alert alert-danger py-2 px-2 mb-0">Akurasi GPS ±' + acc + 'm terlalu rendah. Batas maksimal ±75m. Aktifkan GPS presisi tinggi dan coba lagi.</div>';
+        registerLocationBtn.disabled = false; return;
+      }
+      submitAccuracyInput.value = pos.coords.accuracy;
+      submitTimestampInput.value = pos.timestamp || Date.now();
+      locationVerified = true;
       initRegisterMap(lat, lng);
       setRegisterCoords(lat, lng);
 
@@ -414,9 +415,18 @@
       const curLat = pos.coords.latitude;
       const curLng = pos.coords.longitude;
       const acc = Math.round(pos.coords.accuracy || 0);
+      if (!acc || acc > 75) {
+        submitLatInput.value = ''; submitLngInput.value = ''; submitAccuracyInput.value = ''; submitTimestampInput.value = '';
+        verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0 mt-2">Akurasi GPS ±' + acc + 'm terlalu rendah. Batas maksimal ±75m. Aktifkan GPS presisi tinggi dan coba lagi.</div>';
+        verifyLocationBtn.disabled = false; return;
+      }
+
 
       submitLatInput.value = curLat;
       submitLngInput.value = curLng;
+      submitAccuracyInput.value = pos.coords.accuracy || '';
+      submitTimestampInput.value = pos.timestamp || Date.now();
+      locationVerified = false;
 
       // Buat / pindahkan marker posisi siswa saat ini di verifyMap
       if (verifyUserMarker) {
@@ -446,15 +456,19 @@
         verifyMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
 
         if (dist <= MAX_RADIUS) {
+          locationVerified = true;
           verifyLocationStatus.innerHTML = '<div class="alert alert-success py-2 px-3 mb-0 mt-2">' +
             '<strong><i class="bi bi-check-circle-fill"></i> Lokasi Sesuai!</strong><br>' +
             '<small>Anda berada di area tempat PKL (Jarak: <strong>' + dist + ' meter</strong> dari titik terdaftar, Akurasi GPS: ±' + acc + 'm).</small></div>';
         } else {
-          verifyLocationStatus.innerHTML = '<div class="alert alert-warning py-2 px-3 mb-0 mt-2">' +
+          locationVerified = false;
+          submitLatInput.value = ''; submitLngInput.value = ''; submitAccuracyInput.value = ''; submitTimestampInput.value = '';
+          verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0 mt-2">' +
             '<strong><i class="bi bi-exclamation-triangle-fill"></i> Peringatan Lokasi!</strong><br>' +
             '<small>Lokasi Anda saat ini berjarak <strong>' + dist + ' meter</strong> dari titik PKL yang didaftarkan (toleransi radius: ' + MAX_RADIUS + 'm). Pastikan Anda berada di tempat PKL saat mengirim jurnal.</small></div>';
         }
       } else {
+        locationVerified = true;
         verifyMap.setView([curLat, curLng], 16);
         verifyLocationStatus.innerHTML = '<div class="alert alert-info py-2 px-3 mb-0 mt-2">' +
           '<small><i class="bi bi-geo-alt"></i> Lokasi Anda terdeteksi: ' + curLat.toFixed(6) + ', ' + curLng.toFixed(6) + ' (Akurasi: ±' + acc + 'm)</small></div>';
@@ -525,13 +539,26 @@
   });
 
   // Validasi form sebelum submit
-  journalForm.addEventListener('submit', function(e){
+  journalForm.addEventListener('submit', async function(e){
+    e.preventDefault();
     const sid = studentSelect.value;
     if (!sid) {
       e.preventDefault();
       alert('Pilih nama siswa terlebih dahulu.');
       studentSelect.focus();
       return;
+    }
+
+    try {
+      if (!navigator.geolocation) throw new Error('Browser tidak mendukung GPS.');
+      if (navigator.permissions && navigator.permissions.query) {
+        const permission = await navigator.permissions.query({name: 'geolocation'});
+        if (permission.state !== 'granted') throw new Error('Aktifkan izin lokasi untuk situs Jurnify pada pengaturan browser, lalu deteksi lokasi ulang.');
+      }
+    } catch (err) { alert(err.message || 'Izin lokasi wajib diaktifkan.'); return; }
+    if (!submitLatInput.value || !submitLngInput.value || !submitAccuracyInput.value || !submitTimestampInput.value || !locationVerified) {
+      alert('Lokasi belum terverifikasi. Aktifkan izin lokasi, deteksi lokasi sekarang, dan pastikan berada di area PKL.');
+      verifyLocationBtn.scrollIntoView({behavior:'smooth', block:'center'}); return;
     }
 
     if (isFirstTime) {
@@ -548,6 +575,7 @@
         return;
       }
     }
+    journalForm.submit();
   });
 })();
 </script>
