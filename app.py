@@ -12,6 +12,7 @@ import hashlib
 import base64
 from cryptography.fernet import Fernet, InvalidToken
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 from functools import wraps
 from pathlib import Path
 from contextlib import contextmanager
@@ -25,6 +26,7 @@ from PIL import Image as PILImage
 from flask import Flask, render_template, request, redirect, url_for, flash, session, abort, send_from_directory, send_file, Response, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import RequestEntityTooLarge
 from flask_wtf.csrf import CSRFProtect, CSRFError
 try:
     from vercel.blob import sync as vercel_blob
@@ -44,7 +46,7 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 app = Flask(__name__)
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", "ganti-secret-key-ini-sebelum-deploy"),
-    MAX_CONTENT_LENGTH=MAX_UPLOAD_BYTES,
+    MAX_CONTENT_LENGTH=MAX_UPLOAD_BYTES + 1024 * 1024,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SECURE=bool(os.environ.get("VERCEL")),
     SESSION_COOKIE_SAMESITE="Lax",
@@ -67,6 +69,14 @@ def prevent_dynamic_page_caching(response):
         response.headers["Vary"] = "Cookie"
     return response
 
+@app.errorhandler(RequestEntityTooLarge)
+def handle_upload_too_large(error):
+    flash("Ukuran foto atau total data unggahan terlalu besar. Maksimal foto 4 MB. Kompres foto atau pilih foto lain, lalu coba lagi.", "danger")
+    if session.get("role") == "student":
+        return redirect(url_for("add_journal"), code=303)
+    return render_template("error.html", code=413,
+                           message="Ukuran file terlalu besar. Maksimal foto 4 MB."), 413
+
 @app.errorhandler(CSRFError)
 def handle_csrf_error(error):
     # Token/session yang hilang atau kedaluwarsa diarahkan ke form baru,
@@ -81,8 +91,32 @@ def handle_csrf_error(error):
 if not os.environ.get("VERCEL"):
     UPLOAD_DIR.mkdir(exist_ok=True)
 
+WIB = ZoneInfo("Asia/Jakarta")
+UTC = ZoneInfo("UTC")
+
+def now_wib():
+    return datetime.now(WIB)
+
+def format_wib(value):
+    """Format timestamp ke WIB; timestamp lama tanpa zona diasumsikan UTC."""
+    if not value:
+        return "-"
+    try:
+        if isinstance(value, datetime):
+            parsed = value
+        else:
+            raw = str(value).strip()
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(WIB).strftime("%d-%m-%Y %H:%M WIB")
+    except (TypeError, ValueError, OverflowError):
+        return str(value)
+
+app.jinja_env.filters["wib"] = format_wib
+
 def now():
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    return now_wib().isoformat(timespec="seconds")
 
 def calculate_distance(lat1, lon1, lat2, lon2):
     """Hitung jarak antara dua koordinat GPS dalam satuan meter (rumus Haversine)."""
@@ -241,9 +275,12 @@ def save_photo(file):
     if not allowed_file(file.filename):
         raise ValueError("Format foto harus JPG, JPEG, PNG, atau WEBP.")
     ext = file.filename.rsplit(".", 1)[1].lower()
+    payload = file.read(MAX_UPLOAD_BYTES + 1)
+    if len(payload) > MAX_UPLOAD_BYTES:
+        raise ValueError("Ukuran foto terlalu besar. Maksimal 4 MB. Kompres foto atau pilih foto lain.")
+    file.stream.seek(0)
     filename = f"{secrets.token_hex(16)}.{ext}"
     if USE_VERCEL_BLOB:
-        payload = file.read()
         uploaded = vercel_blob.put_blob(
             f"jurnify/{filename}", payload, access="private",
             content_type=file.mimetype or f"image/{ext}"
@@ -450,7 +487,7 @@ def add_journal():
                 delete_photo(filename)
             flash(str(exc), "danger")
     return render_template("journal_form.html", profile=profile, class_students=class_students,
-                           today=datetime.now().date().isoformat())
+                           today=now_wib().date().isoformat())
 
 def _class_username(class_name, conn):
     normalized = unicodedata.normalize("NFKD", class_name).encode("ascii", "ignore").decode().lower()
@@ -1026,7 +1063,7 @@ def build_monthly_archive_pdf(class_row, year, month, students, journals):
     for j in journals:
         date_text = j['attendance_date'].strftime('%d-%m-%Y') if hasattr(j['attendance_date'], 'strftime') else str(j['attendance_date'])
         name = j.get('student_name') or '-'
-        left = Paragraph(f"<b>{escape(name)}</b><br/>{escape(date_text)}<br/>{escape(j.get('submitted_at') or '-')}", cell)
+        left = Paragraph(f"<b>{escape(name)}</b><br/>{escape(date_text)}<br/>{escape(format_wib(j.get('submitted_at')))}", cell)
         activity = (j.get('activity') or j.get('note') or '-').strip()
         right = Paragraph(f"<b>{escape(j['status'])}</b><br/>{escape(activity).replace(chr(10), '<br/>')}", cell)
         photo_cell = Paragraph('Tidak ada foto', center)
@@ -1362,7 +1399,7 @@ def report_pdf():
     month_label = ", ".join(
         f"{month_names[month - 1]} {year}" for year, month in months
     )
-    recap_date = indo_date(datetime.now().astimezone().date())
+    recap_date = indo_date(now_wib().date())
     info = [
         [Paragraph("<b>Tanggal Rekap</b>", small), Paragraph(": "+escape(recap_date), small)],
         [Paragraph("<b>Bulan Rekap</b>", small), Paragraph(": "+escape(month_label), small)],
@@ -1381,7 +1418,7 @@ def report_pdf():
                    Paragraph("<b>Foto</b>",center)]
         data=[headers]
         for row in rows:
-            timestamp = row.get("submitted_at") or "-"
+            timestamp = format_wib(row.get("submitted_at"))
             activity=(row.get("activity") or row.get("note") or "-").strip()
             img_cell=Paragraph("-",body)
             photo_name = row.get("photo_filename") or ""
@@ -1481,7 +1518,7 @@ def report_csv():
     writer.writerow(headers)
     if student_id:
         for row in rows:
-            writer.writerow([row["workplace"] or "-", row["submitted_at"], row["activity"] or row["note"] or "-", row["photo_filename"] or "-"])
+            writer.writerow([row["workplace"] or "-", format_wib(row["submitted_at"]), row["activity"] or row["note"] or "-", row["photo_filename"] or "-"])
     else:
         for row in rows:
             writer.writerow([row["full_name"], row["workplace"] or "-", row["izin"], row["sakit"], row["hadir"], row["total"]])

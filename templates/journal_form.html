@@ -334,7 +334,7 @@
     const s = studentsData[sid];
     const hasRegisteredLocation = Boolean(s.workplace && s.lat !== null && s.lng !== null);
 
-    if (!hasRegisteredLocation || s.journalCount === 0) {
+    if (!hasRegisteredLocation) {
       isFirstTime = true;
       firstTimePklSection.style.display = 'block';
       registeredPklSection.style.display = 'none';
@@ -543,7 +543,18 @@
   function handleFileSelected(file){
     if (!file) return;
     if (!file.type.startsWith('image/')) {
+      actualPhotoInput.value = '';
+      cameraPhotoInput.value = '';
       alert('File harus berupa gambar (JPG, PNG, atau WEBP).');
+      return;
+    }
+    const maxPhotoBytes = 4 * 1024 * 1024;
+    if (file.size > maxPhotoBytes) {
+      actualPhotoInput.value = '';
+      cameraPhotoInput.value = '';
+      photoPreviewImg.src = '';
+      photoPreviewCard.style.display = 'none';
+      alert('Ukuran foto terlalu besar (' + (file.size / 1024 / 1024).toFixed(2) + ' MB). Maksimal 4 MB. Kompres foto atau pilih foto lain.');
       return;
     }
     const reader = new FileReader();

@@ -77,7 +77,7 @@
             {% endif %}
           </td>
           <td class="small text-muted">
-            {{ j.submitted_at[:16]|replace('T',' ') if j.submitted_at else '-' }}
+            {{ j.submitted_at|wib }}
           </td>
           <td>
             {% if j.verification_status == 'Disetujui' %}

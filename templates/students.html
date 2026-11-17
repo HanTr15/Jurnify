@@ -287,7 +287,7 @@
                       <strong>{{ log.attendance_date.strftime('%d-%m-%Y') if log.attendance_date.strftime is defined else log.attendance_date }}</strong>
                       <span class="history-status status-{{ log.verification_status|lower }}">{{ log.verification_status }}</span>
                     </div>
-                    <div class="history-meta">Dikirim {{ log.submitted_at[:16]|replace('T',' ') if log.submitted_at else '-' }} · {{ log.status }}</div>
+                    <div class="history-meta">Dikirim {{ log.submitted_at|wib }} · {{ log.status }}</div>
                   </div>
                   {% endfor %}
                 </div>
