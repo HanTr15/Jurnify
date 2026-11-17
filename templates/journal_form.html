@@ -14,7 +14,7 @@
             Pilih nama siswa yang mengisi jurnal di bawah ini.
           </div>
 
-          <form method="post" enctype="multipart/form-data" id="journalForm">
+          <form method="post" enctype="multipart/form-data" id="journalForm" data-no-loading>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="submit_lat" id="submitLat">
             <input type="hidden" name="submit_lng" id="submitLng">
