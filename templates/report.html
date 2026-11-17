@@ -1,10 +1,15 @@
 {% extends "base.html" %}
+{% block title %}Rekap Jurnal PKL | Jurnify{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-  <div><h2 class="fw-bold mb-1">Rekap Jurnal PKL</h2><p class="text-muted mb-0">Rekap kelas menampilkan jumlah kehadiran. Pilih siswa untuk melihat detail jurnal per pengiriman.</p></div>
+<div class="page-heading mb-3">
+  <div>
+    <div class="eyebrow">LAPORAN & REKAPITULASI</div>
+    <h1>Rekap Jurnal PKL</h1>
+    <p>Rekap kelas menampilkan jumlah kehadiran. Pilih siswa untuk melihat detail jurnal per pengiriman.</p>
+  </div>
   <div class="d-flex gap-2 flex-wrap">
-    <a class="btn btn-primary" data-no-loading href="{{ url_for('report_pdf', class_id=class_id, start=start, end=end, student_id=student_id) }}">Export PDF</a>
-    <a class="btn btn-outline-secondary" data-no-loading href="{{ url_for('report_csv', class_id=class_id, start=start, end=end, student_id=student_id) }}">Export CSV</a>
+    <a class="btn btn-primary d-inline-flex align-items-center gap-2" data-no-loading href="{{ url_for('report_pdf', class_id=class_id, start=start, end=end, student_id=student_id) }}"><i class="bi bi-file-earmark-pdf"></i> Export PDF</a>
+    <a class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" data-no-loading href="{{ url_for('report_csv', class_id=class_id, start=start, end=end, student_id=student_id) }}"><i class="bi bi-file-earmark-spreadsheet"></i> Export CSV</a>
   </div>
 </div>
 <div class="card mb-3"><div class="card-body">

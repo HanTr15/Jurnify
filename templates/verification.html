@@ -1,14 +1,123 @@
-{% extends "base.html" %}{% block content %}
-<h2 class="fw-bold mb-1">Verifikasi Jurnal</h2><p class="text-muted">Periksa foto dan informasi sebelum menyetujui jurnal.</p>
-<div class="card"><div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Siswa / PKL</th><th>Tanggal & status</th><th>Bukti foto</th><th>Timestamp</th><th>Verifikasi</th></tr></thead><tbody>
-{% for j in journals %}<tr><td><strong>{{ j.full_name }}</strong><div class="small text-muted">Tempat PKL: {{ j.workplace or "-" }}</div><div class="small text-muted">Pembimbing: {{ j.supervisor or "-" }}</div></td><td>{{ j.attendance_date }}<div>{{ j.status }}</div></td><td><a href="{{ url_for('photo',filename=j.photo_filename) }}" target="_blank">Lihat foto</a></td><td class="small">{{ j.submitted_at }}</td><td>
-<span class="badge text-bg-secondary">{{ j.verification_status }}</span>
-{% if j.verification_status == 'Menunggu' %}
-<form method="post" action="{{ url_for('verify_journal',journal_id=j.id) }}" class="mt-2">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<input class="form-control form-control-sm mb-2" name="verification_note" placeholder="Catatan (opsional)">
-<div class="d-flex gap-1"><button name="action" value="Disetujui" class="btn btn-success btn-sm">Setujui</button><button name="action" value="Ditolak" class="btn btn-outline-danger btn-sm">Tolak</button></div></form>
-{% elif j.verification_note %}<div class="small text-muted mt-1">{{ j.verification_note }}</div>{% endif %}
-</td></tr>{% else %}<tr><td colspan="5" class="text-center text-muted py-4">Belum ada jurnal.</td></tr>{% endfor %}
-</tbody></table></div></div>
+{% extends "base.html" %}
+{% block title %}Verifikasi Jurnal | Jurnify{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">VERIFIKASI KEHADIRAN</div>
+    <h1>Verifikasi Jurnal PKL</h1>
+    <p>Periksa keabsahan foto bukti kehadiran, koordinat GPS, dan rincian aktivitas siswa PKL.</p>
+  </div>
+  <a class="btn btn-outline-primary" href="{{ url_for('dashboard') }}">Kembali</a>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table app-table align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Siswa & Info PKL</th>
+          <th>Tanggal & Kehadiran</th>
+          <th>Bukti Foto</th>
+          <th>Lokasi & GPS</th>
+          <th>Waktu Kirim</th>
+          <th style="min-width: 220px;">Aksi Verifikasi</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for j in journals %}
+        <tr>
+          <td>
+            <div class="fw-bold text-dark fs-6">{{ j.full_name or '-' }}</div>
+            <div class="small text-muted"><i class="bi bi-building"></i> {{ j.workplace or "Tempat belum tercatat" }}</div>
+            <div class="small text-muted"><i class="bi bi-people"></i> Kelas: {{ j.class_name }}</div>
+          </td>
+          <td>
+            <div class="fw-semibold">{{ j.attendance_date }}</div>
+            {% if j.status == 'Hadir' %}
+              <span class="status-pill status-hadir mt-1"><i class="bi bi-check-circle-fill"></i> Hadir</span>
+            {% elif j.status == 'Izin' %}
+              <span class="status-pill status-izin mt-1"><i class="bi bi-envelope-fill"></i> Izin</span>
+            {% else %}
+              <span class="status-pill status-sakit mt-1"><i class="bi bi-heart-pulse-fill"></i> Sakit</span>
+            {% endif %}
+            {% if j.activity %}
+              <div class="small text-muted mt-2" style="max-width: 260px; line-height: 1.4;">{{ j.activity }}</div>
+            {% endif %}
+          </td>
+          <td>
+            {% if j.photo_filename %}
+              <a href="{{ url_for('photo', filename=j.photo_filename) }}" target="_blank" rel="noopener" class="d-inline-flex align-items-center gap-1 btn btn-sm btn-outline-primary py-1 px-2">
+                <i class="bi bi-image"></i> Pratinjau Foto
+              </a>
+            {% else %}
+              <span class="text-muted small">Tidak ada foto</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if j.distance_meters is not none %}
+              {% if j.distance_meters <= 250 %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle d-inline-flex align-items-center gap-1 mb-1">
+                  <i class="bi bi-check-circle-fill"></i> {{ j.distance_meters|int }}m (Presisi)
+                </span>
+              {% else %}
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle d-inline-flex align-items-center gap-1 mb-1">
+                  <i class="bi bi-exclamation-triangle-fill"></i> {{ j.distance_meters|int }}m (Luar radius)
+                </span>
+              {% endif %}
+            {% endif %}
+
+            {% if j.submit_lat is not none and j.submit_lng is not none %}
+              <div>
+                <a href="https://www.google.com/maps?q={{ j.submit_lat }},{{ j.submit_lng }}" target="_blank" rel="noopener" class="small text-decoration-none d-inline-flex align-items-center gap-1 text-primary">
+                  <i class="bi bi-geo-alt-fill text-danger"></i> {{ "%.4f"|format(j.submit_lat) }}, {{ "%.4f"|format(j.submit_lng) }}
+                </a>
+              </div>
+            {% else %}
+              <span class="text-muted small">Tanpa GPS</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">
+            {{ j.submitted_at[:16]|replace('T',' ') if j.submitted_at else '-' }}
+          </td>
+          <td>
+            {% if j.verification_status == 'Disetujui' %}
+              <span class="verify-pill verify-disetujui"><i class="bi bi-check-circle-fill"></i> Disetujui</span>
+            {% elif j.verification_status == 'Ditolak' %}
+              <span class="verify-pill verify-ditolak"><i class="bi bi-x-circle-fill"></i> Ditolak</span>
+            {% else %}
+              <span class="verify-pill verify-menunggu mb-2"><i class="bi bi-hourglass-split"></i> Menunggu Verifikasi</span>
+            {% endif %}
+
+            {% if j.verification_status == 'Menunggu' %}
+              <form method="post" action="{{ url_for('verify_journal', journal_id=j.id) }}" class="mt-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input class="form-control form-control-sm mb-2" name="verification_note" placeholder="Catatan opsional...">
+                <div class="d-flex gap-1">
+                  <button name="action" value="Disetujui" class="btn btn-success btn-sm flex-fill">
+                    <i class="bi bi-check-lg"></i> Setujui
+                  </button>
+                  <button name="action" value="Ditolak" class="btn btn-outline-danger btn-sm flex-fill">
+                    <i class="bi bi-x-lg"></i> Tolak
+                  </button>
+                </div>
+              </form>
+            {% elif j.verification_note %}
+              <div class="small text-muted mt-2 p-2 bg-light rounded border">
+                <strong>Catatan:</strong> {{ j.verification_note }}
+              </div>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-5 empty-state">
+            <i class="bi bi-clipboard2-check fs-2 text-muted mb-2 d-block"></i>
+            Belum ada jurnal yang masuk dalam antrean verifikasi.
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% endblock %}

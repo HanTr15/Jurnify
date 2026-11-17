@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Asisten AI | Jurnify{% endblock %}
+{% block content %}
+<div class="page-heading mb-3">
+  <div>
+    <div class="eyebrow">ASISTEN PINTAR</div>
+    <h1>Asisten AI Jurnify</h1>
+    <p>Konsultasikan kendala pengelolaan jurnal PKL, rekap kehadiran, atau panduan sistem bersama AI.</p>
+  </div>
+</div>
+
+<div class="card chatbot-card shadow-sm">
+  <div class="card-body p-0">
+    <div class="chatbot-messages" id="chatMessages">
+      <div class="chatbot-welcome" id="chatWelcome">
+        <div class="chatbot-welcome-icon">
+          <i class="bi bi-robot"></i>
+        </div>
+        <h5>Halo, Administrator!</h5>
+        <p>Saya asisten pintar Jurnify yang siap membantu Anda dalam manajemen data siswa, panduan verifikasi jurnal, dan analisis kehadiran PKL.</p>
+        <div class="chatbot-suggestions">
+          <button type="button" class="chatbot-suggestion" data-prompt="Bagaimana cara verifikasi jurnal PKL yang benar?">
+            <i class="bi bi-question-circle"></i> Cara verifikasi jurnal
+          </button>
+          <button type="button" class="chatbot-suggestion" data-prompt="Bagaimana format file CSV yang benar untuk impor daftar siswa?">
+            <i class="bi bi-file-earmark-spreadsheet"></i> Format CSV daftar siswa
+          </button>
+          <button type="button" class="chatbot-suggestion" data-prompt="Bagaimana cara kerja verifikasi radius lokasi GPS pada jurnal siswa?">
+            <i class="bi bi-geo-alt"></i> Radius lokasi GPS
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chatbot-input-area">
+      <form id="chatForm" class="m-0" autocomplete="off">
+        <div class="chatbot-input-wrap">
+          <textarea id="chatInput" class="chatbot-textarea" rows="1" placeholder="Ketik pertanyaan Anda tentang Jurnify..." required></textarea>
+          <button type="submit" id="sendBtn" class="chatbot-send" title="Kirim pesan">
+            <i class="bi bi-send-fill"></i>
+          </button>
+        </div>
+      </form>
+      <div class="chatbot-footer">
+        Ditenagai oleh Google Gemini 2.0 Flash · Asisten AI dapat membuat kekeliruan, mohon verifikasi data penting.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const chatMessages = document.getElementById('chatMessages');
+  const chatWelcome = document.getElementById('chatWelcome');
+  const chatForm = document.getElementById('chatForm');
+  const chatInput = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const CSRF_TOKEN = '{{ csrf_token() }}';
+
+  const history = [];
+
+  function scrollToBottom() {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function appendMessage(role, text) {
+    if (chatWelcome && chatWelcome.parentNode) {
+      chatWelcome.style.display = 'none';
+    }
+
+    const msgEl = document.createElement('div');
+    msgEl.className = 'chatbot-msg ' + (role === 'user' ? 'chatbot-msg-user' : 'chatbot-msg-assistant');
+
+    const avatarEl = document.createElement('div');
+    avatarEl.className = 'chatbot-avatar';
+    avatarEl.innerHTML = role === 'user' ? '<i class="bi bi-person-fill"></i>' : '<i class="bi bi-robot"></i>';
+
+    const bubbleEl = document.createElement('div');
+    bubbleEl.className = 'chatbot-bubble';
+
+    // Simple markdown-like formatting (paragraphs, line breaks, bold, code)
+    let formatted = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\n\n/g, '<br><br>')
+      .replace(/\n/g, '<br>');
+
+    bubbleEl.innerHTML = formatted;
+
+    msgEl.appendChild(avatarEl);
+    msgEl.appendChild(bubbleEl);
+    chatMessages.appendChild(msgEl);
+    scrollToBottom();
+  }
+
+  function showTypingIndicator() {
+    const typingEl = document.createElement('div');
+    typingEl.id = 'typingIndicator';
+    typingEl.className = 'chatbot-msg chatbot-msg-assistant';
+    typingEl.innerHTML = `
+      <div class="chatbot-avatar"><i class="bi bi-robot"></i></div>
+      <div class="chatbot-bubble">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+      </div>
+    `;
+    chatMessages.appendChild(typingEl);
+    scrollToBottom();
+  }
+
+  function removeTypingIndicator() {
+    const el = document.getElementById('typingIndicator');
+    if (el) el.remove();
+  }
+
+  chatInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+    }
+  });
+
+  chatInput.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+
+  document.querySelectorAll('.chatbot-suggestion').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const prompt = this.getAttribute('data-prompt');
+      chatInput.value = prompt;
+      chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+    });
+  });
+
+  chatForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const message = chatInput.value.trim();
+    if (!message) return;
+
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+    chatInput.disabled = true;
+    sendBtn.disabled = true;
+
+    appendMessage('user', message);
+    showTypingIndicator();
+
+    try {
+      const res = await fetch('/admin/chatbot/api', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': CSRF_TOKEN
+        },
+        body: JSON.stringify({
+          message: message,
+          history: history
+        })
+      });
+
+      const data = await res.json();
+      removeTypingIndicator();
+
+      if (res.ok && data.reply) {
+        appendMessage('model', data.reply);
+        history.push({ role: 'user', parts: [{ text: message }] });
+        history.push({ role: 'model', parts: [{ text: data.reply }] });
+      } else {
+        appendMessage('model', data.error || 'Maaf, terjadi kendala dalam merespons pertanyaan Anda.');
+      }
+    } catch (err) {
+      removeTypingIndicator();
+      appendMessage('model', 'Gagal terhubung ke server chatbot. Periksa koneksi internet Anda.');
+    } finally {
+      chatInput.disabled = false;
+      sendBtn.disabled = false;
+      chatInput.focus();
+    }
+  });
+})();
+</script>
+{% endblock %}

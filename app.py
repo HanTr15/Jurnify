@@ -2,6 +2,7 @@ import os
 import csv
 import io
 import re
+import math
 import unicodedata
 import psycopg
 from psycopg.rows import dict_row
@@ -15,13 +16,20 @@ from functools import wraps
 from pathlib import Path
 from contextlib import contextmanager
 from dotenv import load_dotenv
+import json
+import urllib.request
+import time
+from PIL import Image as PILImage
 
 
-from flask import Flask, render_template, request, redirect, url_for, flash, session, abort, send_from_directory, send_file, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, session, abort, send_from_directory, send_file, Response, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect, CSRFError
-from vercel.blob import sync as vercel_blob
+try:
+    from vercel.blob import sync as vercel_blob
+except ImportError:
+    vercel_blob = None
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / '.env')
@@ -30,6 +38,8 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 USE_VERCEL_BLOB = bool(os.environ.get("BLOB_STORE_ID") or os.environ.get("BLOB_READ_WRITE_TOKEN"))
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 
 app = Flask(__name__)
 app.config.update(
@@ -43,6 +53,7 @@ app.config.update(
     # Form login dapat dibuka lama; token CSRF tetap memiliki masa berlaku terbatas.
     WTF_CSRF_TIME_LIMIT=8 * 60 * 60,
     WTF_CSRF_SSL_STRICT=True,
+    TEMPLATES_AUTO_RELOAD=True,
 )
 csrf = CSRFProtect(app)
 
@@ -72,6 +83,23 @@ if not os.environ.get("VERCEL"):
 
 def now():
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+def calculate_distance(lat1, lon1, lat2, lon2):
+    """Hitung jarak antara dua koordinat GPS dalam satuan meter (rumus Haversine)."""
+    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+        return None
+    try:
+        lat1, lon1, lat2, lon2 = float(lat1), float(lon1), float(lat2), float(lon2)
+        r = 6371000.0  # radius bumi (meter)
+        phi1 = math.radians(lat1)
+        phi2 = math.radians(lat2)
+        delta_phi = math.radians(lat2 - lat1)
+        delta_lambda = math.radians(lon2 - lon1)
+        a = math.sin(delta_phi / 2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0)**2
+        c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+        return round(r * c, 1)
+    except (ValueError, TypeError):
+        return None
 
 def class_password(username):
     """Password akun kelas yang dapat ditampilkan kembali tanpa menyimpan plaintext."""
@@ -133,6 +161,8 @@ def init_db():
         )
         """)
         conn.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS workplace TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS workplace_lat DOUBLE PRECISION")
+        conn.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS workplace_lng DOUBLE PRECISION")
         conn.execute("""
         CREATE TABLE IF NOT EXISTS journals (
             id BIGSERIAL PRIMARY KEY,
@@ -152,6 +182,9 @@ def init_db():
         """)
         conn.execute("ALTER TABLE journals ADD COLUMN IF NOT EXISTS activity TEXT NOT NULL DEFAULT ''")
         conn.execute("ALTER TABLE journals ADD COLUMN IF NOT EXISTS work_process TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE journals ADD COLUMN IF NOT EXISTS submit_lat DOUBLE PRECISION")
+        conn.execute("ALTER TABLE journals ADD COLUMN IF NOT EXISTS submit_lng DOUBLE PRECISION")
+        conn.execute("ALTER TABLE journals ADD COLUMN IF NOT EXISTS distance_meters DOUBLE PRECISION")
         # Upgrade database lama: jurnal kini terikat ke siswa yang dipilih dalam akun kelas.
         conn.execute("ALTER TABLE journals ADD COLUMN IF NOT EXISTS student_id BIGINT REFERENCES students(id) ON DELETE CASCADE")
         conn.execute("ALTER TABLE journals DROP CONSTRAINT IF EXISTS journals_user_id_attendance_date_key")
@@ -258,7 +291,7 @@ def dashboard():
             class_accounts = [dict(row) for row in class_accounts]
             return render_template("dashboard_admin.html", stats=stats, recent=recent, class_accounts=class_accounts)
         profile = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
-        class_students = conn.execute("SELECT id,full_name,workplace FROM students WHERE class_user_id=%s ORDER BY full_name", (session["user_id"],)).fetchall()
+        class_students = conn.execute("SELECT id,full_name,workplace,workplace_lat,workplace_lng FROM students WHERE class_user_id=%s ORDER BY full_name", (session["user_id"],)).fetchall()
         selected_student = request.args.get("student_id", "").strip()
         selected_student_name = None
         valid_student_ids = {str(student["id"]) for student in class_students}
@@ -311,7 +344,15 @@ def add_journal():
         abort(403)
     with get_db() as conn:
         profile = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
-        class_students = conn.execute("SELECT id,full_name,workplace FROM students WHERE class_user_id=%s ORDER BY full_name", (session["user_id"],)).fetchall()
+        class_students = conn.execute("""
+            SELECT s.id, s.full_name, s.workplace, s.workplace_lat, s.workplace_lng,
+                   COUNT(j.id) AS journal_count
+            FROM students s
+            LEFT JOIN journals j ON j.student_id = s.id
+            WHERE s.class_user_id = %s
+            GROUP BY s.id, s.full_name, s.workplace, s.workplace_lat, s.workplace_lng
+            ORDER BY s.full_name
+        """, (session["user_id"],)).fetchall()
     if not class_students:
         flash("Daftar siswa kelas belum diimpor. Hubungi guru/admin.", "danger")
         return redirect(url_for("dashboard"))
@@ -322,6 +363,8 @@ def add_journal():
         activity = request.form.get("activity", "").strip() or note
         student_id = request.form.get("student_id", "")
         workplace = request.form.get("workplace", "").strip()
+        submit_lat = request.form.get("submit_lat", "").strip()
+        submit_lng = request.form.get("submit_lng", "").strip()
         photo = request.files.get("photo")
         filename = None
         try:
@@ -333,23 +376,49 @@ def add_journal():
             filename = save_photo(photo)
             with get_db() as conn:
                 selected_student = conn.execute(
-                    "SELECT id,workplace FROM students WHERE id=%s AND class_user_id=%s",
+                    "SELECT id,workplace,workplace_lat,workplace_lng FROM students WHERE id=%s AND class_user_id=%s",
                     (int(student_id), session["user_id"])
                 ).fetchone()
                 if not selected_student:
                     raise ValueError("Siswa tidak ditemukan pada akun kelas ini.")
-                if not (selected_student["workplace"] or "").strip():
+
+                has_location = bool(
+                    (selected_student["workplace"] or "").strip()
+                    and selected_student["workplace_lat"] is not None
+                    and selected_student["workplace_lng"] is not None
+                )
+
+                target_lat = selected_student["workplace_lat"]
+                target_lng = selected_student["workplace_lng"]
+
+                if not has_location:
                     if not workplace:
-                        raise ValueError("Nama tempat PKL wajib diisi saat pertama kali mengirim jurnal.")
+                        raise ValueError("Nama tempat PKL wajib diisi saat pertama kali mendaftar.")
+                    if not submit_lat or not submit_lng:
+                        raise ValueError("Titik lokasi GPS tempat PKL wajib ditentukan saat pertama kali mengisi jurnal.")
+                    try:
+                        wp_lat = float(submit_lat)
+                        wp_lng = float(submit_lng)
+                    except ValueError:
+                        raise ValueError("Format koordinat titik lokasi GPS tidak valid.")
                     conn.execute(
-                        "UPDATE students SET workplace=%s WHERE id=%s AND (workplace IS NULL OR workplace='')",
-                        (workplace, int(student_id))
+                        "UPDATE students SET workplace=%s, workplace_lat=%s, workplace_lng=%s WHERE id=%s",
+                        (workplace, wp_lat, wp_lng, int(student_id))
                     )
+                    target_lat = wp_lat
+                    target_lng = wp_lng
+
+                cur_lat = float(submit_lat) if submit_lat else None
+                cur_lng = float(submit_lng) if submit_lng else None
+                distance = None
+                if cur_lat is not None and cur_lng is not None and target_lat is not None and target_lng is not None:
+                    distance = calculate_distance(cur_lat, cur_lng, target_lat, target_lng)
+
                 conn.execute("""
                     INSERT INTO journals
-                    (user_id,student_id,attendance_date,status,note,activity,photo_filename,submitted_at)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (session["user_id"], int(student_id), date, status, note, activity, filename, now()))
+                    (user_id,student_id,attendance_date,status,note,activity,photo_filename,submitted_at,submit_lat,submit_lng,distance_meters)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (session["user_id"], int(student_id), date, status, note, activity, filename, now(), cur_lat, cur_lng, distance))
             flash("Jurnal berhasil dikirim dan menunggu verifikasi guru/admin.", "success")
             return redirect(url_for("dashboard"))
         except psycopg.errors.UniqueViolation:
@@ -459,6 +528,32 @@ def parse_student_csv(file_storage):
     return cleaned
 
 
+def _save_imported_students(records, conn):
+    created_classes = []
+    added = 0
+    skipped = 0
+    for class_name in sorted({r[0] for r in records}, key=str.casefold):
+        class_user = conn.execute("SELECT id,username FROM users WHERE role='student' AND lower(full_name)=lower(%s)", (class_name,)).fetchone()
+        if not class_user:
+            username = _class_username(class_name, conn)
+            initial_password = class_password(username)
+            class_user = conn.execute("""
+                INSERT INTO users(username,password_hash,role,full_name,supervisor,workplace,created_at,class_password_encrypted)
+                VALUES(%s,%s,'student',%s,'','',%s,%s) RETURNING id,username
+            """, (username, generate_password_hash(initial_password), class_name, now(),
+                  encrypt_class_password(initial_password))).fetchone()
+            created_classes.append(class_name)
+        for _, student_name in [r for r in records if r[0].casefold() == class_name.casefold()]:
+            exists = conn.execute("SELECT id FROM students WHERE class_user_id=%s AND lower(full_name)=lower(%s)", (class_user["id"], student_name)).fetchone()
+            if exists:
+                skipped += 1
+                continue
+            conn.execute("INSERT INTO students(class_user_id,full_name,created_at) VALUES(%s,%s,%s)",
+                         (class_user["id"], student_name, now()))
+            added += 1
+    return added, skipped, created_classes
+
+
 @app.route("/admin/siswa", methods=["GET", "POST"])
 @login_required
 @admin_required
@@ -469,30 +564,8 @@ def students():
             if not upload or not upload.filename.lower().endswith(".csv"):
                 raise ValueError("Pilih file CSV terlebih dahulu.")
             records = parse_student_csv(upload)
-            created_classes = []
-            added = 0
-            skipped = 0
-            credentials = []
             with get_db() as conn:
-                for class_name in sorted({r[0] for r in records}, key=str.casefold):
-                    class_user = conn.execute("SELECT id,username FROM users WHERE role='student' AND lower(full_name)=lower(%s)", (class_name,)).fetchone()
-                    if not class_user:
-                        username = _class_username(class_name, conn)
-                        initial_password = class_password(username)
-                        class_user = conn.execute("""
-                            INSERT INTO users(username,password_hash,role,full_name,supervisor,workplace,created_at,class_password_encrypted)
-                            VALUES(%s,%s,'student',%s,'','',%s,%s) RETURNING id,username
-                        """, (username, generate_password_hash(initial_password), class_name, now(),
-                              encrypt_class_password(initial_password))).fetchone()
-                        created_classes.append(class_name)
-                    for _, student_name in [r for r in records if r[0].casefold() == class_name.casefold()]:
-                        exists = conn.execute("SELECT id FROM students WHERE class_user_id=%s AND lower(full_name)=lower(%s)", (class_user["id"], student_name)).fetchone()
-                        if exists:
-                            skipped += 1
-                            continue
-                        conn.execute("INSERT INTO students(class_user_id,full_name,created_at) VALUES(%s,%s,%s)",
-                                     (class_user["id"], student_name, now()))
-                        added += 1
+                added, skipped, created_classes = _save_imported_students(records, conn)
             flash(f"Impor selesai: {added} siswa ditambahkan, {skipped} duplikat dilewati, {len(created_classes)} akun kelas dibuat.", "success")
             return redirect(url_for("students"))
         except ValueError as exc:
@@ -506,7 +579,7 @@ def students():
         """).fetchall()
         selected_class = request.args.get("class_id", "")
         data = conn.execute("""
-            SELECT s.id,s.full_name,s.workplace,u.full_name AS class_name,u.username,u.id AS class_user_id
+            SELECT s.id,s.full_name,s.workplace,s.workplace_lat,s.workplace_lng,u.full_name AS class_name,u.username,u.id AS class_user_id
             FROM students s JOIN users u ON u.id=s.class_user_id
             WHERE (%s = '' OR u.id::text = %s)
             ORDER BY u.full_name,s.full_name
@@ -528,6 +601,180 @@ def students():
         account["visible_password"] = decrypt_class_password(account.get("class_password_encrypted"))
     return render_template("students.html", students=data, classes=classes,
                            selected_class=selected_class)
+
+
+def _call_gemini_with_fallback(payload_dict, primary_model=None):
+    model = primary_model or GEMINI_MODEL
+    models_to_try = [model]
+    for alt in ("gemini-flash-lite-latest", "gemini-3.8-flash", "gemini-flash-latest"):
+        if alt not in models_to_try:
+            models_to_try.append(alt)
+
+    last_error = None
+    for attempt_model in models_to_try:
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{attempt_model}:generateContent?key={GEMINI_API_KEY}"
+        payload_bytes = json.dumps(payload_dict).encode("utf-8")
+        req = urllib.request.Request(api_url, data=payload_bytes, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=35) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            last_error = e
+            if e.code in (503, 404):
+                app.logger.warning("Gemini model %s returned %s, trying fallback...", attempt_model, e.code)
+                time.sleep(1)
+                continue
+            raise
+        except Exception as e:
+            last_error = e
+            raise
+    if last_error:
+        raise last_error
+
+
+@app.route("/admin/siswa/scan-foto", methods=["POST"])
+@login_required
+@admin_required
+def scan_student_photo():
+    if not GEMINI_API_KEY:
+        return jsonify({
+            "success": False,
+            "error": "GEMINI_API_KEY belum dikonfigurasi di file .env. Masukkan API key Gemini untuk menggunakan fitur pindai foto absensi."
+        }), 400
+
+    upload = request.files.get("photo")
+    if not upload or not upload.filename:
+        return jsonify({"success": False, "error": "Pilih file foto lembaran absensi terlebih dahulu."}), 400
+
+    ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({"success": False, "error": "Format file harus JPG, JPEG, PNG, atau WEBP."}), 400
+
+    try:
+        raw_bytes = upload.read()
+        if not raw_bytes:
+            return jsonify({"success": False, "error": "File foto kosong."}), 400
+
+        # Resize/optimize image if needed for OCR
+        im = PILImage.open(io.BytesIO(raw_bytes))
+        if im.mode not in ("RGB", "L"):
+            im = im.convert("RGB")
+        max_dim = 1800
+        if max(im.size) > max_dim:
+            im.thumbnail((max_dim, max_dim), PILImage.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=88)
+        b64_image = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        prompt = (
+            "Kamu adalah asisten OCR cerdas khusus membaca lembar daftar hadir / absensi / daftar siswa cetak di sekolah.\n"
+            "Tugasmu adalah menganalisis foto fisik lembaran absensi ini dan mengekstrak datanya.\n\n"
+            "Instruksi:\n"
+            "1. 'class_name': Nama kelas siswa jika tertulis (contoh: 'XII RPL 1', 'XI TKJ 2', dsb). Jika tidak tertulis jelas, berikan string kosong ''.\n"
+            "2. 'students': Array daftar nama lengkap siswa yang ada pada kolom nama di tabel.\n\n"
+            "Aturan ketat:\n"
+            "- Jangan sertakan nomor urut (1, 2, dst) atau NIS pada teks nama siswa. Cukup nama lengkapnya saja.\n"
+            "- Perbaiki kesalahan ejaan tipikal cetak jika ada, tapi pertahankan nama aslinya.\n"
+            "- Abaikan baris judul, nama guru, kepala sekolah, kolom tanggal/tanda tangan, dan catatan kaki.\n"
+            "- Format output WAJIB HANYA berupa JSON valid sesuai skema berikut:\n"
+            "{\n"
+            '  "class_name": "Nama Kelas",\n'
+            '  "students": ["Nama Lengkap 1", "Nama Lengkap 2"]\n'
+            "}"
+        )
+
+        payload_dict = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": b64_image
+                            }
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "response_mime_type": "application/json"
+            }
+        }
+
+        result = _call_gemini_with_fallback(payload_dict)
+
+        candidates = result.get("candidates", [])
+        if not candidates:
+            return jsonify({"success": False, "error": "AI tidak dapat membaca teks dari foto."}), 400
+
+        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        text = re.sub(r"^```json\s*", "", text.strip())
+        text = re.sub(r"^```\s*", "", text)
+        text = re.sub(r"```$", "", text.strip())
+
+        parsed = json.loads(text)
+        class_name = str(parsed.get("class_name") or "").strip()
+        students_raw = parsed.get("students") or []
+        students_list = [str(s).strip() for s in students_raw if str(s).strip()]
+
+        if not students_list:
+            return jsonify({"success": False, "error": "Tidak ditemukan daftar nama siswa yang terbaca dari foto."}), 400
+
+        return jsonify({
+            "success": True,
+            "class_name": class_name,
+            "students": students_list,
+            "count": len(students_list)
+        })
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        app.logger.error("Gemini Vision API error %s: %s", e.code, body)
+        if e.code == 429:
+            return jsonify({"success": False, "error": "Batas kuota Gemini API tercapai. Coba lagi nanti."}), 429
+        if e.code == 503:
+            return jsonify({"success": False, "error": "Server Google AI sedang sibuk karena trafik tinggi (503). Coba lagi dalam beberapa saat."}), 503
+        return jsonify({"success": False, "error": f"Gagal menghubungi Gemini API (kode {e.code})."}), 502
+    except Exception as e:
+        app.logger.exception("Scan photo error: %s", e)
+        return jsonify({"success": False, "error": f"Gagal memproses foto: {str(e)}"}), 500
+
+
+@app.route("/admin/siswa/import-scanned", methods=["POST"])
+@login_required
+@admin_required
+def import_scanned_students():
+    data = request.get_json(silent=True) or {}
+    class_name = str(data.get("class_name") or "").strip()
+    students_list = data.get("students") or []
+
+    if not class_name:
+        return jsonify({"success": False, "error": "Nama kelas wajib diisi."}), 400
+
+    cleaned = []
+    seen = set()
+    for s in students_list:
+        name = re.sub(r"\s+", " ", str(s)).strip()
+        if name and name.casefold() not in seen:
+            cleaned.append(name)
+            seen.add(name.casefold())
+
+    if not cleaned:
+        return jsonify({"success": False, "error": "Daftar siswa tidak boleh kosong."}), 400
+
+    records = [(class_name, name) for name in cleaned]
+    try:
+        with get_db() as conn:
+            added, skipped, created_classes = _save_imported_students(records, conn)
+        msg = f"Impor selesai: {added} siswa ditambahkan, {skipped} duplikat dilewati, {len(created_classes)} akun kelas dibuat."
+        flash(msg, "success")
+        return jsonify({"success": True, "message": msg})
+    except Exception as e:
+        app.logger.exception("Import scanned error: %s", e)
+        return jsonify({"success": False, "error": f"Gagal menyimpan data: {str(e)}"}), 500
+
 
 @app.route("/admin/akun-kelas/<int:class_id>/password", methods=["POST"])
 @login_required
@@ -598,6 +845,33 @@ def update_class_name(class_id):
             return redirect(url_for("students"))
         conn.execute("UPDATE users SET full_name=%s WHERE id=%s", (new_name, class_id))
     flash(f"Nama kelas berhasil diubah menjadi {new_name}.", "success")
+    return redirect(url_for("students"))
+
+@app.route("/admin/siswa/<int:student_id>/lokasi", methods=["POST"])
+@login_required
+@admin_required
+def update_student_location(student_id):
+    workplace = " ".join(request.form.get("workplace", "").split())
+    lat = request.form.get("workplace_lat", "").strip()
+    lng = request.form.get("workplace_lng", "").strip()
+    if not workplace:
+        flash("Nama tempat PKL wajib diisi.", "danger")
+        return redirect(url_for("students"))
+    try:
+        wp_lat = float(lat) if lat else None
+        wp_lng = float(lng) if lng else None
+    except ValueError:
+        flash("Format koordinat titik lokasi GPS tidak valid.", "danger")
+        return redirect(url_for("students"))
+    with get_db() as conn:
+        student = conn.execute("SELECT full_name FROM students WHERE id=%s", (student_id,)).fetchone()
+        if not student:
+            abort(404)
+        conn.execute(
+            "UPDATE students SET workplace=%s, workplace_lat=%s, workplace_lng=%s WHERE id=%s",
+            (workplace, wp_lat, wp_lng, student_id)
+        )
+    flash(f"Data tempat PKL & titik lokasi {student['full_name']} berhasil diperbarui.", "success")
     return redirect(url_for("students"))
 
 @app.route("/admin/siswa/<int:student_id>/hapus", methods=["POST"])
@@ -987,6 +1261,80 @@ def photo(filename):
     return Response(photo_bytes, mimetype=content_type,
                     headers={"Cache-Control": "private, no-store",
                              "X-Content-Type-Options": "nosniff"})
+
+@app.route("/admin/chatbot")
+@login_required
+@admin_required
+def chatbot():
+    return render_template("chatbot.html")
+
+@app.route("/admin/chatbot/api", methods=["POST"])
+@login_required
+@admin_required
+def chatbot_api():
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "GEMINI_API_KEY belum dikonfigurasi di file .env."}), 500
+
+    data = request.get_json(silent=True)
+    if not data or not data.get("message", "").strip():
+        return jsonify({"error": "Pesan tidak boleh kosong."}), 400
+
+    user_message = data["message"].strip()[:4000]
+    chat_history = data.get("history", [])
+
+    # Build contents for Gemini API
+    contents = []
+    for entry in chat_history[-20:]:  # Limit history to last 20 messages
+        role = entry.get("role", "user")
+        parts = entry.get("parts", [])
+        if role in ("user", "model") and parts:
+            contents.append({"role": role, "parts": parts})
+
+    contents.append({"role": "user", "parts": [{"text": user_message}]})
+
+    system_instruction = (
+        "Kamu adalah Jurnify AI Assistant, asisten cerdas untuk sistem manajemen jurnal PKL (Praktik Kerja Lapangan). "
+        "Kamu membantu admin sekolah dengan pertanyaan tentang pengelolaan jurnal siswa, verifikasi, impor data, "
+        "dan fitur-fitur sistem Jurnify. Jawab dengan bahasa Indonesia yang sopan dan jelas. "
+        "Jika pertanyaan di luar konteks sistem Jurnify, tetap jawab dengan ramah."
+    )
+
+    payload_dict = {
+        "system_instruction": {"parts": [{"text": system_instruction}]},
+        "contents": contents,
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 2048,
+        }
+    }
+
+    try:
+        result = _call_gemini_with_fallback(payload_dict)
+
+        candidates = result.get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            reply = parts[0].get("text", "") if parts else ""
+        else:
+            reply = ""
+
+        if not reply:
+            return jsonify({"error": "AI tidak memberikan respons. Coba lagi."}), 500
+
+        return jsonify({"reply": reply})
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        app.logger.error("Gemini API error %s: %s", e.code, body)
+        if e.code == 429:
+            return jsonify({"error": "Batas permintaan API tercapai. Coba lagi nanti."}), 429
+        if e.code == 503:
+            return jsonify({"error": "Server AI Google sedang sibuk karena trafik tinggi (503). Coba lagi dalam beberapa saat."}), 503
+        return jsonify({"error": "Gagal menghubungi Gemini API."}), 502
+    except Exception as e:
+        app.logger.exception("Chatbot error: %s", e)
+        return jsonify({"error": "Terjadi kesalahan internal."}), 500
+
 
 @app.errorhandler(413)
 def too_large(_):

@@ -1,25 +1,366 @@
 {% extends "base.html" %}{% block title %}Data Siswa & Akun | Jurnify{% endblock %}{% block content %}
 <div class="page-heading"><div><div class="eyebrow">MANAJEMEN DATA</div><h1>Data siswa & akun</h1><p>Impor daftar hadir, kelola akun kelas, dan data siswa.</p></div><a class="btn btn-outline-primary" href="{{ url_for('dashboard') }}">Kembali</a></div>
-<section class="panel mb-4 import-panel"><div class="panel-heading"><div><h2>Impor daftar siswa</h2><p>Unggah CSV daftar hadir sekolah atau format kelas,nama_siswa.</p></div></div><form method="post" enctype="multipart/form-data" class="import-area"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="row g-3 align-items-end"><div class="col-lg-8"><label class="form-label fw-semibold">File CSV</label><input class="form-control" type="file" name="csv_file" accept=".csv,text/csv" required><div class="form-text">Sistem membaca metadata kelas dan nama siswa, lalu mengabaikan bagian tanda tangan.</div></div><div class="col-lg-4"><button class="btn btn-primary w-100">Impor dan buat akun kelas</button></div></div></form></section>
-<section class="panel mb-4"><div class="panel-heading"><div><h2>Akun kelas</h2><p>Pilih satu atau beberapa akun untuk dihapus sekaligus.</p></div><span class="count-chip">{{ classes|length }} kelas</span></div>
-<div class="bulk-toolbar"><label class="select-all-label"><input type="checkbox" id="selectAllClasses"> Pilih semua</label><form method="post" action="{{ url_for('delete_class_accounts_bulk') }}" id="bulkAccountForm" onsubmit="const n=document.querySelectorAll('.class-account-check:checked').length;return n>0&&confirm('Hapus '+n+' akun kelas terpilih? Semua data siswa dan jurnal dari akun tersebut akan dihapus permanen.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-danger btn-sm" id="bulkDeleteButton" type="submit" disabled>Hapus akun terpilih</button></form></div>
-<div class="table-responsive"><table class="table app-table align-middle"><thead><tr><th class="check-column"></th><th>Kelas</th><th>Username</th><th>Jumlah siswa</th><th>Password kelas</th><th>Aksi</th></tr></thead><tbody>{% for c in classes %}<tr><td><input class="form-check-input class-account-check" form="bulkAccountForm" type="checkbox" name="class_ids" value="{{ c.id }}" aria-label="Pilih akun {{ c.class_name }}"></td><td><form method="post" action="{{ url_for('update_class_name', class_id=c.id) }}" class="class-name-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input class="form-control form-control-sm" type="text" name="class_name" value="{{ c.class_name }}" maxlength="100" required aria-label="Nama kelas"><button class="btn btn-sm btn-outline-primary mt-1">Simpan nama</button></form></td><td><form method="post" action="{{ url_for('update_class_username', class_id=c.id) }}" class="class-username-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input class="form-control form-control-sm" type="text" name="username" value="{{ c.username }}" minlength="3" maxlength="40" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,39}" autocomplete="off" required aria-label="Username akun kelas"><button class="btn btn-sm btn-outline-primary mt-1">Simpan username</button></form></td><td>{{ c.student_count }} siswa</td><td><div class="class-password-wrap"><div class="input-group input-group-sm"><input class="form-control class-password-field" type="password" value="{{ c.visible_password }}" placeholder="{% if c.visible_password %}Password kelas{% else %}Atur password baru{% endif %}" readonly aria-label="Password kelas {{ c.class_name }}"><button class="btn btn-outline-secondary password-toggle" type="button" {% if not c.visible_password %}disabled{% endif %}>Lihat</button></div><form method="post" action="{{ url_for('update_class_password', class_id=c.id) }}" class="password-change-form mt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="input-group input-group-sm"><input class="form-control" type="password" name="new_password" minlength="8" placeholder="Password baru (min. 8)" autocomplete="new-password" required><button class="btn btn-outline-primary text-nowrap">Ganti</button></div></form>{% if not c.visible_password %}<small class="text-muted">Password lama belum tersimpan. Atur password baru agar bisa dilihat.</small>{% endif %}</div></td><td><form method="post" action="{{ url_for('delete_class_account', class_id=c.id) }}" onsubmit="return confirm('Hapus akun kelas {{ c.class_name }}? Semua data siswa dan jurnal kelas ini juga akan dihapus permanen.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Hapus</button></form></td></tr>{% else %}<tr><td colspan="6" class="empty-state">Belum ada akun kelas.</td></tr>{% endfor %}</tbody></table></div>
-<div class="panel-note">Menghapus akun kelas juga menghapus seluruh siswa dan jurnal yang terhubung dengan akun tersebut.</div></section>
-<section class="panel"><div class="panel-heading"><div><h2>Daftar siswa</h2><p>Pilih kelas untuk melihat siswa yang terdaftar.</p></div><span class="count-chip">{{ students|length }} siswa</span></div><div class="filter-toolbar"><form method="get" class="row g-2 align-items-end"><div class="col-md-5"><label class="form-label fw-semibold">Kelas</label><select class="form-select" name="class_id" onchange="this.form.submit()"><option value="">Semua kelas</option>{% for c in classes %}<option value="{{ c.id }}" {% if selected_class|string == c.id|string %}selected{% endif %}>{{ c.class_name }}</option>{% endfor %}</select></div><div class="col-auto"><a class="btn btn-light" href="{{ url_for('students') }}">Reset</a></div></form></div><div class="table-responsive"><table class="table app-table align-middle"><thead><tr><th style="width:70px">No.</th><th>Kelas</th><th>Nama siswa</th><th>Tempat PKL</th><th>Riwayat pengisian jurnal</th><th>Aksi</th></tr></thead><tbody>{% for s in students %}<tr><td class="text-muted">{{ loop.index }}</td><td>{{ s.class_name }}</td><td class="fw-semibold">{{ s.full_name }}</td><td>{{ s.workplace or "Belum diisi" }}</td><td class="student-history-cell">
-{% if s.journal_logs %}
-  <details class="student-history">
-    <summary><span class="history-count">{{ s.journal_logs|length }} kali mengisi</span><span class="history-hint">Lihat riwayat</span></summary>
-    <div class="history-list">
-      {% for log in s.journal_logs %}
-      <div class="history-item">
-        <div class="history-main"><strong>{{ log.attendance_date.strftime('%d-%m-%Y') if log.attendance_date.strftime is defined else log.attendance_date }}</strong><span class="history-status status-{{ log.verification_status|lower }}">{{ log.verification_status }}</span></div>
-        <div class="history-meta">Dikirim {{ log.submitted_at[:16]|replace('T',' ') if log.submitted_at else '-' }} · {{ log.status }}</div>
-      </div>
-      {% endfor %}
+<section class="panel mb-4 import-panel">
+  <div class="panel-heading d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+      <h2>Impor daftar siswa</h2>
+      <p>Unggah file CSV atau gunakan foto fisik lembar absensi dengan AI.</p>
     </div>
-  </details>
-{% else %}<span class="text-muted small">Belum pernah mengisi</span>{% endif %}
-</td><td><form method="post" action="{{ url_for('delete_student', student_id=s.id) }}" onsubmit="return confirm('Hapus siswa {{ s.full_name }}? Semua jurnal siswa ini juga akan dihapus permanen.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Hapus</button></form></td></tr>{% else %}<tr><td colspan="6" class="empty-state">Tidak ada siswa pada kelas yang dipilih.</td></tr>{% endfor %}</tbody></table></div></section>
+    <ul class="nav nav-pills" id="importTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active py-1 px-3 fw-bold" id="csv-tab" data-bs-toggle="pill" data-bs-target="#csv-pane" type="button" role="tab" aria-selected="true">
+          <i class="bi bi-file-earmark-spreadsheet me-1"></i> File CSV
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link py-1 px-3 fw-bold" id="photo-tab" data-bs-toggle="pill" data-bs-target="#photo-pane" type="button" role="tab" aria-selected="false">
+          <i class="bi bi-camera-fill me-1"></i> Pindai Foto (AI)
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <div class="tab-content pt-3" id="importTabContent">
+    <!-- Tab 1: CSV File -->
+    <div class="tab-pane fade show active" id="csv-pane" role="tabpanel" aria-labelledby="csv-tab">
+      <form method="post" enctype="multipart/form-data" class="import-area">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+          <div class="col-lg-8">
+            <label class="form-label fw-semibold mb-2">File CSV Daftar Siswa</label>
+            <div class="input-group">
+              <input class="form-control" type="file" name="csv_file" accept=".csv,text/csv" required>
+              <button class="btn btn-primary px-4 fw-bold" type="submit">
+                <i class="bi bi-cloud-arrow-up-fill me-1"></i> Impor dan buat akun kelas
+              </button>
+            </div>
+            <div class="form-text mt-2">Sistem membaca metadata kelas dan nama siswa, lalu mengabaikan bagian tanda tangan.</div>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Tab 2: AI Photo Scanner -->
+    <div class="tab-pane fade" id="photo-pane" role="tabpanel" aria-labelledby="photo-tab">
+      <div class="import-area">
+        <div class="row g-3">
+          <div class="col-lg-8">
+            <label class="form-label fw-semibold mb-2">Foto Fisik Lembar Absensi / Daftar Hadir</label>
+            <div class="input-group">
+              <input class="form-control" type="file" id="scanPhotoInput" accept="image/jpeg,image/png,image/webp">
+              <button class="btn btn-primary px-4 fw-bold" type="button" id="btnScanPhoto">
+                <i class="bi bi-stars me-1"></i> Pindai dengan AI
+              </button>
+            </div>
+            <div class="form-text mt-2">
+              <i class="bi bi-info-circle me-1"></i> Foto atau unggah lembaran absensi fisik yang dicetak. AI akan membaca nama kelas dan daftar siswa secara otomatis.
+            </div>
+          </div>
+        </div>
+
+        <!-- Scanning Indicator -->
+        <div id="scanLoading" class="text-center py-4 my-3 rounded-3" style="display:none; background: #f8fafc; border: 1px dashed #cbd5e1;">
+          <div class="spinner-border text-primary" role="status" style="width: 2.2rem; height: 2.2rem;">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <div class="mt-2 fw-bold text-dark">AI sedang membaca lembaran absensi fisik...</div>
+          <small class="text-muted">Mengekstrak nama kelas dan daftar nama siswa dari tabel</small>
+        </div>
+
+        <!-- Scanning Error Alert -->
+        <div id="scanErrorAlert" class="alert alert-danger mt-3" style="display:none;" role="alert"></div>
+
+        <!-- Scan Result Preview -->
+        <div id="scanResultSection" class="mt-4 p-3 p-md-4 rounded-3 border" style="display:none; background: #f8fafc; border-color: #cbd5e1 !important;">
+          <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
+            <h5 class="fw-bold mb-0 text-primary">
+              <i class="bi bi-check2-circle me-1"></i> Pratinjau Hasil Pindaian AI
+            </h5>
+            <span class="badge bg-primary fs-6 px-3 py-2" id="scannedStudentCount">0 Siswa</span>
+          </div>
+
+          <div class="row g-4">
+            <!-- Left: Photo preview -->
+            <div class="col-md-4 text-center">
+              <label class="form-label fw-semibold text-muted small d-block mb-2">Foto Lembar Absensi</label>
+              <div class="position-relative border rounded-3 p-1 bg-white shadow-sm overflow-hidden" style="max-height: 400px;">
+                <img id="scannedPhotoThumb" src="" alt="Foto Absensi" class="img-fluid rounded" style="max-height: 380px; width: 100%; object-fit: contain;">
+              </div>
+            </div>
+
+            <!-- Right: Editable Form -->
+            <div class="col-md-8">
+              <div class="mb-3">
+                <label for="scannedClassName" class="form-label fw-semibold">
+                  Nama Kelas <span class="text-danger">*</span>
+                </label>
+                <input type="text" class="form-control form-control-lg fw-bold" id="scannedClassName" placeholder="Contoh: XII RPL 1">
+                <div class="form-text">Nama kelas yang terdeteksi. Silakan koreksi bila diperlukan.</div>
+              </div>
+
+              <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <label for="scannedStudentsText" class="form-label fw-semibold mb-0">
+                    Daftar Nama Siswa <span class="text-danger">*</span>
+                  </label>
+                  <small class="text-muted">(1 baris = 1 siswa)</small>
+                </div>
+                <textarea class="form-control font-monospace" id="scannedStudentsText" rows="10" placeholder="Ahmad Fauzi&#10;Budi Santoso&#10;Citra Dewi"></textarea>
+                <div class="form-text">Anda dapat mengedit, menambah, atau menghapus nama siswa langsung di kotak teks ini sebelum disimpan.</div>
+              </div>
+
+              <div class="d-flex flex-wrap gap-2 justify-content-end mt-4">
+                <button type="button" class="btn btn-outline-secondary px-3" id="btnCancelScan">
+                  <i class="bi bi-x-circle me-1"></i> Batal
+                </button>
+                <button type="button" class="btn btn-primary px-4 fw-bold" id="btnSaveScanned">
+                  <i class="bi bi-cloud-arrow-up-fill me-1"></i> Simpan & Buat Akun Kelas
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel mb-4">
+  <div class="panel-heading">
+    <div>
+      <h2>Akun kelas</h2>
+      <p>Pilih satu atau beberapa akun untuk dihapus sekaligus.</p>
+    </div>
+    <span class="count-chip">{{ classes|length }} kelas</span>
+  </div>
+  <div class="bulk-toolbar">
+    <label class="select-all-label">
+      <input type="checkbox" id="selectAllClasses" class="form-check-input"> Pilih semua
+    </label>
+    <form method="post" action="{{ url_for('delete_class_accounts_bulk') }}" id="bulkAccountForm" onsubmit="const n=document.querySelectorAll('.class-account-check:checked').length;return n>0&&confirm('Hapus '+n+' akun kelas terpilih? Semua data siswa dan jurnal dari akun tersebut akan dihapus permanen.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-danger btn-sm" id="bulkDeleteButton" type="submit" disabled>
+        <i class="bi bi-trash me-1"></i> Hapus akun terpilih
+      </button>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table app-table align-middle mb-0">
+      <thead>
+        <tr>
+          <th class="check-column text-center"></th>
+          <th style="min-width: 180px;">Kelas</th>
+          <th style="min-width: 180px;">Username</th>
+          <th style="min-width: 120px;" class="text-center">Jumlah siswa</th>
+          <th style="min-width: 250px;">Password kelas</th>
+          <th class="text-center" style="min-width: 90px;">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in classes %}
+        <tr>
+          <td class="text-center">
+            <input class="form-check-input class-account-check" form="bulkAccountForm" type="checkbox" name="class_ids" value="{{ c.id }}" aria-label="Pilih akun {{ c.class_name }}">
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('update_class_name', class_id=c.id) }}" class="class-name-form m-0">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="input-group input-group-sm">
+                <input class="form-control" type="text" name="class_name" value="{{ c.class_name }}" maxlength="100" required aria-label="Nama kelas">
+                <button class="btn btn-outline-primary" title="Simpan perubahan nama kelas"><i class="bi bi-check-lg"></i></button>
+              </div>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('update_class_username', class_id=c.id) }}" class="class-username-form m-0">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="input-group input-group-sm">
+                <input class="form-control font-monospace" type="text" name="username" value="{{ c.username }}" minlength="3" maxlength="40" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,39}" autocomplete="off" required aria-label="Username akun kelas">
+                <button class="btn btn-outline-primary" title="Simpan perubahan username"><i class="bi bi-check-lg"></i></button>
+              </div>
+            </form>
+          </td>
+          <td class="text-center">
+            <span class="badge bg-light-primary"><i class="bi bi-people-fill me-1"></i>{{ c.student_count }} siswa</span>
+          </td>
+          <td>
+            <div class="class-password-wrap">
+              <div class="input-group input-group-sm mb-1">
+                <input class="form-control class-password-field" type="password" value="{{ c.visible_password }}" placeholder="{% if c.visible_password %}Password kelas{% else %}Atur password baru{% endif %}" readonly aria-label="Password kelas {{ c.class_name }}">
+                <button class="btn btn-outline-secondary password-toggle" type="button" {% if not c.visible_password %}disabled{% endif %}>Lihat</button>
+              </div>
+              <form method="post" action="{{ url_for('update_class_password', class_id=c.id) }}" class="password-change-form m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="input-group input-group-sm">
+                  <input class="form-control" type="password" name="new_password" minlength="8" placeholder="Password baru" autocomplete="new-password" required>
+                  <button class="btn btn-outline-primary text-nowrap">Ganti</button>
+                </div>
+              </form>
+              {% if not c.visible_password %}
+                <small class="text-muted d-block mt-1" style="font-size: 11px;">Password lama belum tersimpan.</small>
+              {% endif %}
+            </div>
+          </td>
+          <td class="text-center">
+            <form method="post" action="{{ url_for('delete_class_account', class_id=c.id) }}" class="m-0" onsubmit="return confirm('Hapus akun kelas {{ c.class_name }}? Semua data siswa dan jurnal kelas ini juga akan dihapus permanen.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-outline-danger" title="Hapus akun"><i class="bi bi-trash"></i> Hapus</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state text-center py-4">Belum ada akun kelas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-note">Menghapus akun kelas juga menghapus seluruh siswa dan jurnal yang terhubung dengan akun tersebut.</div>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Daftar siswa</h2>
+      <p>Pilih kelas untuk melihat siswa yang terdaftar.</p>
+    </div>
+    <span class="count-chip">{{ students|length }} siswa</span>
+  </div>
+  <div class="filter-toolbar">
+    <form method="get" class="d-flex align-items-center gap-2 flex-wrap m-0">
+      <label class="form-label fw-semibold mb-0 me-1">Filter Kelas:</label>
+      <select class="form-select form-select-sm" name="class_id" style="width: auto; min-width: 220px;" onchange="this.form.submit()">
+        <option value="">Semua kelas</option>
+        {% for c in classes %}
+        <option value="{{ c.id }}" {% if selected_class|string == c.id|string %}selected{% endif %}>{{ c.class_name }}</option>
+        {% endfor %}
+      </select>
+      <a class="btn btn-light btn-sm" href="{{ url_for('students') }}">Reset</a>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table app-table align-middle mb-0">
+      <thead>
+        <tr>
+          <th style="width:60px;" class="text-center">No.</th>
+          <th>Kelas</th>
+          <th>Nama Siswa</th>
+          <th>Tempat PKL</th>
+          <th>Riwayat Pengisian Jurnal</th>
+          <th class="text-center" style="width: 100px;">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in students %}
+        <tr>
+          <td class="text-muted text-center">{{ loop.index }}</td>
+          <td><span class="badge bg-light-secondary">{{ s.class_name }}</span></td>
+          <td class="fw-semibold text-dark">{{ s.full_name }}</td>
+          <td>
+            <div class="fw-medium">{{ s.workplace or "Belum diisi" }}</div>
+            {% if s.workplace_lat is not none and s.workplace_lng is not none %}
+              <div class="mt-1">
+                <a href="https://www.google.com/maps?q={{ s.workplace_lat }},{{ s.workplace_lng }}" target="_blank" rel="noopener" class="badge bg-light text-primary border text-decoration-none">
+                  <i class="bi bi-geo-alt-fill text-danger"></i> {{ "%.4f"|format(s.workplace_lat) }}, {{ "%.4f"|format(s.workplace_lng) }}
+                </a>
+              </div>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 mt-1 edit-location-btn" style="font-size: 11px;"
+                    data-student-id="{{ s.id }}"
+                    data-student-name="{{ s.full_name }}"
+                    data-workplace="{{ s.workplace or '' }}"
+                    data-lat="{{ s.workplace_lat if s.workplace_lat is not none else '' }}"
+                    data-lng="{{ s.workplace_lng if s.workplace_lng is not none else '' }}">
+              <i class="bi bi-pencil-square"></i> Ubah Lokasi
+            </button>
+          </td>
+          <td class="student-history-cell">
+            {% if s.journal_logs %}
+              <details class="student-history">
+                <summary>
+                  <span class="history-count">{{ s.journal_logs|length }} kali mengisi</span>
+                  <span class="history-hint">Lihat riwayat</span>
+                </summary>
+                <div class="history-list">
+                  {% for log in s.journal_logs %}
+                  <div class="history-item">
+                    <div class="history-main">
+                      <strong>{{ log.attendance_date.strftime('%d-%m-%Y') if log.attendance_date.strftime is defined else log.attendance_date }}</strong>
+                      <span class="history-status status-{{ log.verification_status|lower }}">{{ log.verification_status }}</span>
+                    </div>
+                    <div class="history-meta">Dikirim {{ log.submitted_at[:16]|replace('T',' ') if log.submitted_at else '-' }} · {{ log.status }}</div>
+                  </div>
+                  {% endfor %}
+                </div>
+              </details>
+            {% else %}
+              <span class="text-muted small">Belum pernah mengisi</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            <form method="post" action="{{ url_for('delete_student', student_id=s.id) }}" class="m-0" onsubmit="return confirm('Hapus siswa {{ s.full_name }}? Semua jurnal siswa ini juga akan dihapus permanen.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-outline-danger" title="Hapus siswa"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state text-center py-4">Tidak ada siswa pada kelas yang dipilih.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Modal Ubah Lokasi PKL Siswa -->
+<div class="modal fade" id="editLocationModal" tabindex="-1" aria-labelledby="editLocationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:#ffffff; border:1px solid #e2e8f0; color:#1e293b;">
+      <div class="modal-header border-bottom" style="border-color:#f1f5f9 !important;">
+        <h5 class="modal-title fw-bold" id="editLocationModalLabel" style="color:#0f172a;"><i class="bi bi-geo-alt-fill text-primary"></i> Ubah Lokasi PKL Siswa</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="editLocationForm" method="post" action="">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label text-muted small">Nama Siswa</label>
+            <input type="text" class="form-control" id="modalStudentName" readonly style="background:#f8fafc; border-color:#cbd5e1; color:#0f172a;">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Nama Tempat PKL <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" name="workplace" id="modalWorkplace" maxlength="180" placeholder="Contoh: PT Maju Bersama" required>
+          </div>
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label fw-bold mb-0">Titik Lokasi (Google Maps)</label>
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-info btn-sm" id="modalGetGpsBtn"><i class="bi bi-crosshair"></i> Ambil GPS</button>
+                <a href="#" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm" id="modalMapLink" style="display:none;"><i class="bi bi-box-arrow-up-right"></i> Maps</a>
+              </div>
+            </div>
+            <div id="modalMap" class="interactive-map-box" style="height:220px;"></div>
+            <div class="interactive-map-hint"><i class="bi bi-info-circle text-info"></i> Geser pin atau klik peta untuk menentukan titik.</div>
+            <div id="modalGpsStatus" class="small mt-1"></div>
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label text-muted small">Latitude</label>
+              <input type="number" step="any" class="form-control form-control-sm" name="workplace_lat" id="modalLat" placeholder="-7.534200">
+            </div>
+            <div class="col-6">
+              <label class="form-label text-muted small">Longitude</label>
+              <input type="number" step="any" class="form-control form-control-sm" name="workplace_lng" id="modalLng" placeholder="112.560000">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary btn-sm fw-bold">Simpan Perubahan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}<script>
 const classChecks=[...document.querySelectorAll('.class-account-check')];
@@ -37,4 +378,260 @@ document.querySelectorAll('.password-toggle').forEach(button=>{
     button.textContent=reveal?'Sembunyikan':'Lihat';
   });
 });
+
+// Modal Ubah Lokasi PKL Siswa dengan Google Maps
+const locationModalEl = document.getElementById('editLocationModal');
+const locationModal = new bootstrap.Modal(locationModalEl);
+const modalForm = document.getElementById('editLocationForm');
+const modalStudentName = document.getElementById('modalStudentName');
+const modalWorkplace = document.getElementById('modalWorkplace');
+const modalLat = document.getElementById('modalLat');
+const modalLng = document.getElementById('modalLng');
+const modalGetGpsBtn = document.getElementById('modalGetGpsBtn');
+const modalGpsStatus = document.getElementById('modalGpsStatus');
+const modalMapLink = document.getElementById('modalMapLink');
+
+const GMAPS_TILE_URL = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+const DEFAULT_COORDS = [-7.5342, 112.5600];
+
+let modalMap = null;
+let modalMarker = null;
+
+function initModalMap(initLat, initLng) {
+  const lat = initLat || DEFAULT_COORDS[0];
+  const lng = initLng || DEFAULT_COORDS[1];
+  const zoom = (initLat && initLng) ? 16 : 13;
+
+  if (!modalMap) {
+    modalMap = L.map('modalMap').setView([lat, lng], zoom);
+    L.tileLayer(GMAPS_TILE_URL, { maxZoom: 20, attribution: '&copy; Google Maps' }).addTo(modalMap);
+    modalMarker = L.marker([lat, lng], { draggable: true }).addTo(modalMap);
+
+    modalMarker.on('dragend', function(e) {
+      const pos = e.target.getLatLng();
+      modalLat.value = pos.lat.toFixed(6);
+      modalLng.value = pos.lng.toFixed(6);
+      updateMapLink();
+    });
+
+    modalMap.on('click', function(e) {
+      modalMarker.setLatLng(e.latlng);
+      modalLat.value = e.latlng.lat.toFixed(6);
+      modalLng.value = e.latlng.lng.toFixed(6);
+      updateMapLink();
+    });
+  } else {
+    modalMap.setView([lat, lng], zoom);
+    modalMarker.setLatLng([lat, lng]);
+  }
+}
+
+function updateMapLink(){
+  const lat = parseFloat(modalLat.value);
+  const lng = parseFloat(modalLng.value);
+  if (!isNaN(lat) && !isNaN(lng)) {
+    modalMapLink.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+    modalMapLink.style.display = 'inline-flex';
+    if (modalMarker && modalMap) {
+      modalMarker.setLatLng([lat, lng]);
+      modalMap.panTo([lat, lng]);
+    }
+  } else {
+    modalMapLink.style.display = 'none';
+  }
+}
+
+modalLat.addEventListener('input', updateMapLink);
+modalLng.addEventListener('input', updateMapLink);
+
+locationModalEl.addEventListener('shown.bs.modal', function() {
+  if (modalMap) modalMap.invalidateSize();
+});
+
+document.querySelectorAll('.edit-location-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const sid = btn.getAttribute('data-student-id');
+    const sname = btn.getAttribute('data-student-name');
+    const workplace = btn.getAttribute('data-workplace') || '';
+    const latStr = btn.getAttribute('data-lat') || '';
+    const lngStr = btn.getAttribute('data-lng') || '';
+
+    modalForm.action = '/admin/siswa/' + sid + '/lokasi';
+    modalStudentName.value = sname;
+    modalWorkplace.value = workplace;
+    modalLat.value = latStr;
+    modalLng.value = lngStr;
+    modalGpsStatus.innerHTML = '';
+
+    const lat = parseFloat(latStr);
+    const lng = parseFloat(lngStr);
+
+    locationModal.show();
+
+    setTimeout(() => {
+      initModalMap(!isNaN(lat) ? lat : null, !isNaN(lng) ? lng : null);
+      updateMapLink();
+      if (modalMap) modalMap.invalidateSize();
+    }, 200);
+  });
+});
+
+modalGetGpsBtn.addEventListener('click', () => {
+  if (!navigator.geolocation) {
+    modalGpsStatus.innerHTML = '<span class="text-danger">Browser tidak mendukung geolokasi GPS.</span>';
+    return;
+  }
+  modalGetGpsBtn.disabled = true;
+  modalGpsStatus.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> Mengambil GPS...</span>';
+
+  navigator.geolocation.getCurrentPosition(pos => {
+    modalLat.value = pos.coords.latitude.toFixed(6);
+    modalLng.value = pos.coords.longitude.toFixed(6);
+    modalGpsStatus.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Titik lokasi berhasil diisi.</span>';
+    modalGetGpsBtn.disabled = false;
+    updateMapLink();
+  }, err => {
+    modalGpsStatus.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> Gagal: ' + err.message + '</span>';
+    modalGetGpsBtn.disabled = false;
+  }, {enableHighAccuracy: true, timeout: 15000, maximumAge: 0});
+});
+
+// --- AI Photo Scanner for Student Attendance Sheet ---
+const CSRF_TOKEN = '{{ csrf_token() }}';
+const scanPhotoInput = document.getElementById('scanPhotoInput');
+const btnScanPhoto = document.getElementById('btnScanPhoto');
+const scanLoading = document.getElementById('scanLoading');
+const scanErrorAlert = document.getElementById('scanErrorAlert');
+const scanResultSection = document.getElementById('scanResultSection');
+const scannedPhotoThumb = document.getElementById('scannedPhotoThumb');
+const scannedClassName = document.getElementById('scannedClassName');
+const scannedStudentsText = document.getElementById('scannedStudentsText');
+const scannedStudentCount = document.getElementById('scannedStudentCount');
+const btnCancelScan = document.getElementById('btnCancelScan');
+const btnSaveScanned = document.getElementById('btnSaveScanned');
+
+function updateStudentCounter() {
+  if (!scannedStudentsText || !scannedStudentCount) return;
+  const lines = scannedStudentsText.value.split('\n').map(s => s.trim()).filter(Boolean);
+  scannedStudentCount.textContent = lines.length + ' Siswa';
+}
+
+if (scannedStudentsText) {
+  scannedStudentsText.addEventListener('input', updateStudentCounter);
+}
+
+if (btnScanPhoto) {
+  btnScanPhoto.addEventListener('click', async () => {
+    if (!scanPhotoInput.files || scanPhotoInput.files.length === 0) {
+      alert('Pilih atau jepret foto lembaran absensi terlebih dahulu.');
+      scanPhotoInput.focus();
+      return;
+    }
+
+    const file = scanPhotoInput.files[0];
+    if (file.size > 4 * 1024 * 1024) {
+      alert('Ukuran foto maksimal 4 MB.');
+      return;
+    }
+
+    if (scannedPhotoThumb) {
+      scannedPhotoThumb.src = URL.createObjectURL(file);
+    }
+
+    scanErrorAlert.style.display = 'none';
+    scanErrorAlert.textContent = '';
+    scanResultSection.style.display = 'none';
+    scanLoading.style.display = 'block';
+    btnScanPhoto.disabled = true;
+    scanPhotoInput.disabled = true;
+
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    try {
+      const res = await fetch('/admin/siswa/scan-foto', {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': CSRF_TOKEN
+        },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal memindai foto absensi.');
+      }
+
+      scannedClassName.value = data.class_name || '';
+      scannedStudentsText.value = (data.students || []).join('\n');
+      updateStudentCounter();
+      scanResultSection.style.display = 'block';
+      scanResultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    } catch (err) {
+      scanErrorAlert.textContent = err.message || 'Terjadi kesalahan saat memproses foto.';
+      scanErrorAlert.style.display = 'block';
+    } finally {
+      scanLoading.style.display = 'none';
+      btnScanPhoto.disabled = false;
+      scanPhotoInput.disabled = false;
+    }
+  });
+}
+
+if (btnCancelScan) {
+  btnCancelScan.addEventListener('click', () => {
+    scanResultSection.style.display = 'none';
+    scanPhotoInput.value = '';
+    if (scannedPhotoThumb) scannedPhotoThumb.src = '';
+  });
+}
+
+if (btnSaveScanned) {
+  btnSaveScanned.addEventListener('click', async () => {
+    const className = scannedClassName.value.trim();
+    if (!className) {
+      alert('Nama kelas wajib diisi.');
+      scannedClassName.focus();
+      return;
+    }
+
+    const students = scannedStudentsText.value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (students.length === 0) {
+      alert('Daftar siswa minimal berisi 1 nama.');
+      scannedStudentsText.focus();
+      return;
+    }
+
+    btnSaveScanned.disabled = true;
+    const originalText = btnSaveScanned.innerHTML;
+    btnSaveScanned.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Menyimpan...';
+
+    try {
+      const res = await fetch('/admin/siswa/import-scanned', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': CSRF_TOKEN
+        },
+        body: JSON.stringify({
+          class_name: className,
+          students: students
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal menyimpan data siswa.');
+      }
+
+      window.location.reload();
+
+    } catch (err) {
+      alert(err.message || 'Gagal menyimpan siswa.');
+      btnSaveScanned.disabled = false;
+      btnSaveScanned.innerHTML = originalText;
+    }
+  });
+}
 </script>{% endblock %}

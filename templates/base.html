@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id" data-bs-theme="dark">
+<html lang="id" data-bs-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,11 +7,15 @@
 <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="any">
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/jurnify-mark.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/jurnify-mark.png') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Nunito+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/zuramai/mazer@docs/demo/assets/compiled/css/app.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=3.0">
 </head>
-<body class="mazer-dark">
+<body class="theme-light">
 {% if current_user and current_user.role == 'admin' %}
 <script>
   try {
@@ -41,6 +45,7 @@
           <li class="sidebar-item {% if request.endpoint in ['students','delete_student','delete_class_account','delete_class_accounts_bulk'] %}active{% endif %}"><a href="{{ url_for('students') }}" class="sidebar-link"><i class="bi bi-people-fill"></i><span>Data Siswa & Akun</span></a></li>
           <li class="sidebar-item {% if request.endpoint in ['verification_queue','verify_journal'] %}active{% endif %}"><a href="{{ url_for('verification_queue') }}" class="sidebar-link"><i class="bi bi-clipboard-check-fill"></i><span>Verifikasi Jurnal</span></a></li>
           <li class="sidebar-item {% if request.endpoint in ['report','report_csv'] %}active{% endif %}"><a href="{{ url_for('report') }}" class="sidebar-link"><i class="bi bi-file-earmark-bar-graph-fill"></i><span>Rekap Jurnal</span></a></li>
+          <li class="sidebar-item {% if request.endpoint in ['chatbot','chatbot_api'] %}active{% endif %}"><a href="{{ url_for('chatbot') }}" class="sidebar-link"><i class="bi bi-robot"></i><span>Asisten AI</span></a></li>
           <li class="sidebar-title">Akun</li>
           <li class="sidebar-item"><form method="post" action="{{ url_for('logout') }}" class="mazer-logout-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="sidebar-link border-0 bg-transparent w-100 text-start"><i class="bi bi-box-arrow-left"></i><span>Keluar</span></button></form></li>
         </ul>
@@ -62,7 +67,10 @@
   {% if current_user %}
   <header class="d-flex justify-content-between align-items-center mb-4">
     <a class="student-brand" href="{{ url_for('dashboard') }}"><img src="{{ url_for('static', filename='img/jurnify-logo.png') }}" alt="Jurnify"><span>Portal Siswa</span></a>
-    <div>{{ current_user.full_name }} <form class="d-inline" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-secondary btn-sm ms-2">Keluar</button></form></div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge bg-light text-dark border px-3 py-2 fw-semibold d-inline-flex align-items-center gap-2"><i class="bi bi-person-circle text-primary"></i> {{ current_user.full_name }}</span>
+      <form class="d-inline" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-danger btn-sm">Keluar</button></form>
+    </div>
   </header>
   {% endif %}
 {% endif %}
@@ -82,8 +90,20 @@
 {% endif %}
 <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 <div class="page-loading" id="pageLoading" aria-live="polite" aria-label="Memuat halaman"><div class="page-loading-indicator"><span class="page-loading-spinner"></span><span>Memuat halaman...</span></div></div>
-<script src="https://cdn.jsdelivr.net/gh/zuramai/mazer@docs/demo/assets/static/js/initTheme.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+  document.documentElement.setAttribute('data-bs-theme', 'light');
+  try { localStorage.setItem('theme', 'light'); } catch(_) {}
+  if (window.L && L.Icon && L.Icon.Default) {
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
+    });
+  }
+</script>
 <script>
 (function(){
  const body=document.body;

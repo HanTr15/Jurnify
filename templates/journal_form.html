@@ -1,31 +1,554 @@
 {% extends "base.html" %}{% block content %}
-<div class="student-form-page"><div class="row justify-content-center"><div class="col-lg-8"><div class="mb-3"><a href="{{ url_for('dashboard') }}" class="text-decoration-none">← Kembali</a></div>
-<div class="card student-form-card shadow-sm"><div class="card-body p-4"><h2 class="fw-bold">Isi Jurnal PKL</h2><p class="text-muted">Foto bukti wajib disertakan untuk semua status kehadiran.</p>
-<div class="profile-strip student-profile-strip mb-4"><strong>{{ profile.full_name }}</strong><br>Pilih nama siswa yang mengisi jurnal di bawah ini.</div>
-<form method="post" enctype="multipart/form-data">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<div class="mb-3"><label class="form-label">Nama siswa</label><select class="form-select" name="student_id" required><option value="">Pilih nama siswa</option>{% for student in class_students %}<option value="{{ student.id }}">{{ student.full_name }}</option>{% endfor %}</select></div>
-<div class="mb-3"><label class="form-label">Nama tempat PKL</label><input type="text" class="form-control" id="workplaceInput" name="workplace" maxlength="180" placeholder="Contoh: PT Maju Teknologi" required><div class="form-text" id="workplaceHelp">Isi sekali saat pertama kali mengirim jurnal. Nama tempat PKL akan disimpan untuk siswa ini.</div></div>
-<div class="mb-3"><label class="form-label">Tanggal kehadiran</label><input type="date" class="form-control" name="attendance_date" value="{{ today }}" max="{{ today }}" required></div>
-<div class="mb-3"><label class="form-label">Status kehadiran</label><select class="form-select" name="status" required><option value="">Pilih status</option><option>Hadir</option><option>Izin</option><option>Sakit</option></select></div>
-<div class="mb-3"><label class="form-label">Bukti foto <span class="text-danger">*</span></label><input class="form-control" type="file" name="photo" accept="image/jpeg,image/png,image/webp" required><div class="form-text">JPG, PNG, atau WEBP. Maksimal 5 MB. Untuk Hadir unggah bukti kehadiran; untuk Izin/Sakit unggah foto bukti pendukung.</div></div>
-<div class="mb-3"><label class="form-label">Kegiatan</label><textarea class="form-control" name="activity" rows="3" placeholder="Tuliskan pekerjaan atau kegiatan yang dilakukan" required></textarea></div>
-<div class="mb-3"><label class="form-label">Catatan tambahan (opsional)</label><textarea class="form-control" name="note" rows="2" placeholder="Catatan tambahan"></textarea></div>
-<button class="btn btn-primary">Kirim jurnal</button></form></div></div></div></div></div>
+<div class="student-form-page">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="mb-3">
+        <a href="{{ url_for('dashboard') }}" class="text-decoration-none">← Kembali ke Dashboard</a>
+      </div>
+      <div class="card student-form-card shadow-sm">
+        <div class="card-body p-4">
+          <h2 class="fw-bold">Isi Jurnal PKL</h2>
+          <p class="text-muted">Isi jurnal kegiatan harian dan sertakan bukti kehadiran Anda.</p>
+          <div class="profile-strip student-profile-strip mb-4">
+            <strong>{{ profile.full_name }}</strong><br>
+            Pilih nama siswa yang mengisi jurnal di bawah ini.
+          </div>
+
+          <form method="post" enctype="multipart/form-data" id="journalForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="submit_lat" id="submitLat">
+            <input type="hidden" name="submit_lng" id="submitLng">
+
+            <!-- Pilih Nama Siswa -->
+            <div class="mb-3">
+              <label class="form-label fw-bold">Nama Siswa <span class="text-danger">*</span></label>
+              <select class="form-select" name="student_id" id="studentSelect" required>
+                <option value="">-- Pilih nama siswa --</option>
+                {% for student in class_students %}
+                <option value="{{ student.id }}">{{ student.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <!-- Bagian Pendaftaran Tempat PKL (Muncul jika siswa baru / belum pernah ada tempat PKL & titik lokasi) -->
+            <div id="firstTimePklSection" class="p-3 mb-3 border rounded-3" style="display:none; background: #eff6ff; border-color: #bfdbfe !important;">
+              <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi bi-geo-alt-fill text-primary fs-5"></i>
+                <h5 class="mb-0 fw-bold text-primary">Pendaftaran Tempat & Titik Lokasi PKL</h5>
+              </div>
+              <p class="text-muted small mb-3">
+                Siswa ini belum pernah mendaftarkan tempat PKL. Harap isi nama tempat PKL dan tentukan titik koordinat lokasi PKL pada peta Google Maps di bawah ini.
+              </p>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Nama Tempat PKL <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="workplaceInput" name="workplace" maxlength="180" placeholder="Contoh: PT Teknologi Nusantara / Bengkel Maju">
+                <div class="form-text">Nama tempat PKL akan tersimpan permanen untuk siswa ini.</div>
+              </div>
+              <div class="mb-2">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+                  <label class="form-label fw-semibold mb-0">Titik Lokasi PKL (Google Maps) <span class="text-danger">*</span></label>
+                  <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary btn-sm px-3" id="registerLocationBtn">
+                      <i class="bi bi-crosshair"></i> Ambil Lokasi Saya (GPS)
+                    </button>
+                    <a href="#" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm" id="registerGmapsLink" style="display:none;">
+                      <i class="bi bi-box-arrow-up-right"></i> Google Maps
+                    </a>
+                  </div>
+                </div>
+
+                <!-- Wadah Peta Google Maps Interaktif -->
+                <div id="registerMap" class="interactive-map-box"></div>
+                <div class="interactive-map-hint">
+                  <i class="bi bi-info-circle-fill text-info"></i> Geser pin merah atau klik pada peta untuk menentukan titik tempat PKL yang presisi.
+                </div>
+                <div id="registerLocationStatus" class="mt-2" style="font-size: 0.85rem;"></div>
+              </div>
+            </div>
+
+            <!-- Info Tempat PKL Terdaftar (Muncul jika siswa sudah punya tempat PKL & titik lokasi) -->
+            <div id="registeredPklSection" class="p-3 mb-3 border rounded-3" style="display:none; background: #f8fafc; border-color: #e2e8f0 !important;">
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                <div>
+                  <small class="text-muted text-uppercase fw-bold" style="letter-spacing: .05em;">Tempat PKL Terdaftar</small>
+                  <h5 class="mb-0 fw-bold text-dark" id="registeredWorkplaceName">-</h5>
+                </div>
+                <span class="badge bg-success-subtle text-success border border-success-subtle" id="registeredCoordsBadge">
+                  <i class="bi bi-geo-alt"></i> Titik PKL Terdaftar
+                </span>
+              </div>
+              <div class="mt-3 pt-2 border-top" style="border-color: #e2e8f0 !important;">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                  <div>
+                    <label class="form-label fw-semibold mb-0"><i class="bi bi-geo-fill text-info"></i> Deteksi Lokasi Kehadiran (Peta Google Maps)</label>
+                    <p class="text-muted small mb-0">Pastikan Anda berada di lokasi PKL saat mengirim jurnal.</p>
+                  </div>
+                  <button type="button" class="btn btn-outline-info btn-sm" id="verifyLocationBtn">
+                    <i class="bi bi-crosshair"></i> Deteksi Lokasi Saya Sekarang
+                  </button>
+                </div>
+
+                <!-- Wadah Peta Google Maps Verifikasi -->
+                <div id="verifyMap" class="interactive-map-box"></div>
+                <div class="interactive-map-hint">
+                  <span class="badge bg-danger me-1">&nbsp;</span> Titik PKL Terdaftar &nbsp;|&nbsp;
+                  <span class="badge bg-primary me-1">&nbsp;</span> Lokasi Anda Saat Ini &nbsp;|&nbsp;
+                  <span class="text-muted">Lingkaran biru: Radius toleransi (250m)</span>
+                </div>
+                <div id="verifyLocationStatus" class="mt-2" style="font-size: 0.85rem;"></div>
+              </div>
+            </div>
+
+            <!-- Tanggal Kehadiran -->
+            <div class="mb-3">
+              <label class="form-label fw-bold">Tanggal Kehadiran <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" name="attendance_date" value="{{ today }}" max="{{ today }}" required>
+            </div>
+
+            <!-- Status Kehadiran -->
+            <div class="mb-3">
+              <label class="form-label fw-bold">Status Kehadiran <span class="text-danger">*</span></label>
+              <select class="form-select" name="status" required>
+                <option value="">-- Pilih status --</option>
+                <option value="Hadir">Hadir</option>
+                <option value="Izin">Izin</option>
+                <option value="Sakit">Sakit</option>
+              </select>
+            </div>
+
+            <!-- Bukti Foto (Kamera Langsung / File) -->
+            <div class="mb-3">
+              <label class="form-label fw-bold">Bukti Foto <span class="text-danger">*</span></label>
+              <p class="text-muted small mb-2">Ambil foto langsung melalui kamera ponsel/laptop atau pilih dari galeri.</p>
+
+              <!-- Hidden actual input -->
+              <input type="file" name="photo" id="actualPhotoInput" accept="image/jpeg,image/png,image/webp" style="display:none;" required>
+              <!-- Hidden dedicated camera input with capture -->
+              <input type="file" id="cameraPhotoInput" accept="image/*" capture="environment" style="display:none;">
+
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <button type="button" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2" id="openCameraBtn">
+                  <i class="bi bi-camera-fill fs-6"></i> Ambil Foto Lewat Kamera
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" id="openGalleryBtn">
+                  <i class="bi bi-image fs-6"></i> Pilih dari Galeri / File
+                </button>
+              </div>
+
+              <!-- Preview Area -->
+              <div id="photoPreviewCard" class="p-2 border rounded-3 mt-2" style="display:none; background: #f8fafc; border-color: #e2e8f0; max-width: 320px;">
+                <div class="position-relative">
+                  <img id="photoPreviewImg" src="" alt="Pratinjau Foto" class="img-fluid rounded" style="max-height: 220px; width: 100%; object-fit: cover;">
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2 px-1">
+                  <span class="text-muted small" id="photoFileInfo">-</span>
+                  <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" id="removePhotoBtn" title="Hapus foto">
+                    <i class="bi bi-trash"></i> Hapus
+                  </button>
+                </div>
+              </div>
+              <div class="form-text">Format: JPG, PNG, atau WEBP. Maksimal 4 MB.</div>
+            </div>
+
+            <!-- Kegiatan -->
+            <div class="mb-3">
+              <label class="form-label fw-bold">Kegiatan Hari Ini <span class="text-danger">*</span></label>
+              <textarea class="form-control" name="activity" rows="3" placeholder="Tuliskan pekerjaan atau aktivitas yang dilakukan selama PKL hari ini" required></textarea>
+            </div>
+
+            <!-- Catatan Tambahan -->
+            <div class="mb-3">
+              <label class="form-label">Catatan Tambahan (opsional)</label>
+              <textarea class="form-control" name="note" rows="2" placeholder="Catatan kendala atau informasi tambahan"></textarea>
+            </div>
+
+            <button class="btn btn-primary w-100 py-2 fw-bold" type="submit" id="submitBtn">
+              <i class="bi bi-send-fill"></i> Kirim Jurnal PKL
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
-{% block scripts %}<script>
-const studentSelect=document.querySelector('select[name="student_id"]');
-const workplaceInput=document.getElementById('workplaceInput');
-const workplaceHelp=document.getElementById('workplaceHelp');
-const savedWorkplaces={};
-{% for student in class_students %}savedWorkplaces[{{ student.id|tojson }}]={{ (student.workplace or '')|tojson }};{% endfor %}
-function syncWorkplace(){
-  const saved=savedWorkplaces[studentSelect.value]||'';
-  workplaceInput.value=saved;
-  workplaceInput.readOnly=Boolean(saved);
-  workplaceInput.required=!saved;
-  workplaceHelp.textContent=saved ? 'Tempat PKL sudah tersimpan dan tidak perlu diisi ulang.' : 'Isi sekali saat pertama kali mengirim jurnal. Nama tempat PKL akan disimpan untuk siswa ini.';
-}
-studentSelect.addEventListener('change',syncWorkplace);
-syncWorkplace();
-</script>{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const studentSelect = document.getElementById('studentSelect');
+  const firstTimePklSection = document.getElementById('firstTimePklSection');
+  const registeredPklSection = document.getElementById('registeredPklSection');
+  const workplaceInput = document.getElementById('workplaceInput');
+  const registeredWorkplaceName = document.getElementById('registeredWorkplaceName');
+  const registeredCoordsBadge = document.getElementById('registeredCoordsBadge');
+  const registerLocationBtn = document.getElementById('registerLocationBtn');
+  const registerLocationStatus = document.getElementById('registerLocationStatus');
+  const registerGmapsLink = document.getElementById('registerGmapsLink');
+  const verifyLocationBtn = document.getElementById('verifyLocationBtn');
+  const verifyLocationStatus = document.getElementById('verifyLocationStatus');
+  const submitLatInput = document.getElementById('submitLat');
+  const submitLngInput = document.getElementById('submitLng');
+  const journalForm = document.getElementById('journalForm');
+
+  // Camera & Photo Elements
+  const actualPhotoInput = document.getElementById('actualPhotoInput');
+  const cameraPhotoInput = document.getElementById('cameraPhotoInput');
+  const openCameraBtn = document.getElementById('openCameraBtn');
+  const openGalleryBtn = document.getElementById('openGalleryBtn');
+  const photoPreviewCard = document.getElementById('photoPreviewCard');
+  const photoPreviewImg = document.getElementById('photoPreviewImg');
+  const photoFileInfo = document.getElementById('photoFileInfo');
+  const removePhotoBtn = document.getElementById('removePhotoBtn');
+
+  // Tile layer Google Maps
+  const GMAPS_TILE_URL = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+  const DEFAULT_COORDS = [-7.5342, 112.5600];
+
+  let registerMap = null;
+  let registerMarker = null;
+
+  let verifyMap = null;
+  let verifyTargetMarker = null;
+  let verifyUserMarker = null;
+  let verifyCircle = null;
+
+  // Data siswa dari server
+  const studentsData = {};
+  {% for student in class_students %}
+  studentsData[{{ student.id|tojson }}] = {
+    id: {{ student.id }},
+    name: {{ student.full_name|tojson }},
+    workplace: {{ (student.workplace or '')|tojson }},
+    lat: {{ (student.workplace_lat)|tojson }},
+    lng: {{ (student.workplace_lng)|tojson }},
+    journalCount: {{ student.journal_count|default(0) }}
+  };
+  {% endfor %}
+
+  let currentTargetLat = null;
+  let currentTargetLng = null;
+  let isFirstTime = false;
+
+  // Inisialisasi Peta Pendaftaran
+  function initRegisterMap(initLat, initLng) {
+    const lat = initLat || DEFAULT_COORDS[0];
+    const lng = initLng || DEFAULT_COORDS[1];
+    const zoom = (initLat && initLng) ? 16 : 13;
+
+    if (!registerMap) {
+      registerMap = L.map('registerMap').setView([lat, lng], zoom);
+      L.tileLayer(GMAPS_TILE_URL, {
+        maxZoom: 20,
+        attribution: '&copy; Google Maps'
+      }).addTo(registerMap);
+
+      registerMarker = L.marker([lat, lng], { draggable: true }).addTo(registerMap);
+
+      registerMarker.on('dragend', function(e) {
+        const pos = e.target.getLatLng();
+        setRegisterCoords(pos.lat, pos.lng);
+      });
+
+      registerMap.on('click', function(e) {
+        registerMarker.setLatLng(e.latlng);
+        setRegisterCoords(e.latlng.lat, e.latlng.lng);
+      });
+    } else {
+      registerMap.setView([lat, lng], zoom);
+      registerMarker.setLatLng([lat, lng]);
+      setTimeout(() => registerMap.invalidateSize(), 200);
+    }
+  }
+
+  function setRegisterCoords(lat, lng) {
+    submitLatInput.value = lat;
+    submitLngInput.value = lng;
+    registerGmapsLink.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+    registerGmapsLink.style.display = 'inline-flex';
+    registerLocationStatus.innerHTML = '<div class="alert alert-success py-2 px-3 mb-0">' +
+      '<strong><i class="bi bi-geo-alt-fill text-danger"></i> Titik Lokasi Ditentukan:</strong> ' +
+      lat.toFixed(6) + ', ' + lng.toFixed(6) + '<br>' +
+      '<small class="text-muted">Titik ini akan didaftarkan sebagai lokasi acuan PKL Anda.</small></div>';
+  }
+
+  // Inisialisasi Peta Verifikasi
+  function initVerifyMap(targetLat, targetLng) {
+    if (!verifyMap) {
+      verifyMap = L.map('verifyMap').setView([targetLat, targetLng], 16);
+      L.tileLayer(GMAPS_TILE_URL, {
+        maxZoom: 20,
+        attribution: '&copy; Google Maps'
+      }).addTo(verifyMap);
+    } else {
+      verifyMap.setView([targetLat, targetLng], 16);
+      setTimeout(() => verifyMap.invalidateSize(), 200);
+    }
+
+    if (verifyTargetMarker) verifyMap.removeLayer(verifyTargetMarker);
+    if (verifyCircle) verifyMap.removeLayer(verifyCircle);
+    if (verifyUserMarker) { verifyMap.removeLayer(verifyUserMarker); verifyUserMarker = null; }
+
+    // Marker Tempat PKL Terdaftar (Merah)
+    verifyTargetMarker = L.marker([targetLat, targetLng]).addTo(verifyMap);
+    verifyTargetMarker.bindPopup('<b>Tempat PKL Terdaftar</b><br>' + targetLat.toFixed(6) + ', ' + targetLng.toFixed(6)).openPopup();
+
+    // Lingkaran radius toleransi 250m
+    verifyCircle = L.circle([targetLat, targetLng], {
+      color: '#435ebe',
+      fillColor: '#435ebe',
+      fillOpacity: 0.18,
+      radius: 250
+    }).addTo(verifyMap);
+  }
+
+  function syncStudentView(){
+    const sid = studentSelect.value;
+    submitLatInput.value = '';
+    submitLngInput.value = '';
+    registerLocationStatus.innerHTML = '';
+    verifyLocationStatus.innerHTML = '';
+    registerGmapsLink.style.display = 'none';
+
+    if (!sid || !studentsData[sid]) {
+      firstTimePklSection.style.display = 'none';
+      registeredPklSection.style.display = 'none';
+      workplaceInput.required = false;
+      currentTargetLat = null;
+      currentTargetLng = null;
+      isFirstTime = false;
+      return;
+    }
+
+    const s = studentsData[sid];
+    const hasRegisteredLocation = Boolean(s.workplace && s.lat !== null && s.lng !== null);
+
+    if (!hasRegisteredLocation || s.journalCount === 0) {
+      isFirstTime = true;
+      firstTimePklSection.style.display = 'block';
+      registeredPklSection.style.display = 'none';
+      workplaceInput.value = s.workplace || '';
+      workplaceInput.required = true;
+      currentTargetLat = null;
+      currentTargetLng = null;
+
+      // Inisialisasi peta pendaftaran setelah section terlihat
+      setTimeout(() => {
+        initRegisterMap(s.lat, s.lng);
+        if (s.lat && s.lng) {
+          setRegisterCoords(s.lat, s.lng);
+        }
+      }, 150);
+    } else {
+      isFirstTime = false;
+      firstTimePklSection.style.display = 'none';
+      registeredPklSection.style.display = 'block';
+      workplaceInput.required = false;
+      registeredWorkplaceName.textContent = s.workplace;
+      currentTargetLat = s.lat;
+      currentTargetLng = s.lng;
+      registeredCoordsBadge.innerHTML = '<i class="bi bi-geo-alt"></i> Titik PKL: ' + s.lat.toFixed(5) + ', ' + s.lng.toFixed(5);
+      verifyLocationStatus.innerHTML = '<span class="text-muted small"><i class="bi bi-info-circle"></i> Tekan tombol "Deteksi Lokasi Saya Sekarang" untuk memeriksa lokasi kehadiran Anda pada peta.</span>';
+
+      setTimeout(() => {
+        initVerifyMap(s.lat, s.lng);
+      }, 150);
+    }
+  }
+
+  studentSelect.addEventListener('change', syncStudentView);
+  syncStudentView();
+
+  // Rumus Haversine untuk hitung jarak (meter)
+  function calculateDistance(lat1, lon1, lat2, lon2){
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c);
+  }
+
+  // Ambil titik lokasi PKL pertama kali via GPS
+  registerLocationBtn.addEventListener('click', function(){
+    if (!navigator.geolocation) {
+      registerLocationStatus.innerHTML = '<div class="alert alert-danger py-1 px-2 mb-0">Browser Anda tidak mendukung geolokasi GPS.</div>';
+      return;
+    }
+    registerLocationBtn.disabled = true;
+    registerLocationStatus.innerHTML = '<span class="text-warning"><i class="bi bi-arrow-repeat spin"></i> Mengambil titik lokasi GPS...</span>';
+
+    navigator.geolocation.getCurrentPosition(function(pos){
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const acc = Math.round(pos.coords.accuracy || 0);
+
+      initRegisterMap(lat, lng);
+      setRegisterCoords(lat, lng);
+
+      registerLocationBtn.disabled = false;
+      registerLocationBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Ambil Ulang Titik GPS';
+    }, function(err){
+      let msg = 'Gagal mengambil titik lokasi GPS.';
+      if (err.code === 1) msg = 'Akses lokasi ditolak. Izinkan akses GPS pada browser/perangkat Anda.';
+      else if (err.code === 2) msg = 'Lokasi tidak dapat ditemukan. Pastikan GPS aktif.';
+      else if (err.code === 3) msg = 'Waktu permintaan lokasi habis. Silakan coba lagi.';
+
+      registerLocationStatus.innerHTML = '<div class="alert alert-danger py-1 px-2 mb-0 mt-2"><i class="bi bi-exclamation-triangle"></i> ' + msg + '</div>';
+      registerLocationBtn.disabled = false;
+    }, {enableHighAccuracy: true, timeout: 15000, maximumAge: 0});
+  });
+
+  // Verifikasi lokasi saat mengisi jurnal harian
+  verifyLocationBtn.addEventListener('click', function(){
+    if (!navigator.geolocation) {
+      verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-1 px-2 mb-0">Browser tidak mendukung geolokasi GPS.</div>';
+      return;
+    }
+    verifyLocationBtn.disabled = true;
+    verifyLocationStatus.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> Mendeteksi lokasi GPS Anda saat ini pada peta Google Maps...</span>';
+
+    navigator.geolocation.getCurrentPosition(function(pos){
+      const curLat = pos.coords.latitude;
+      const curLng = pos.coords.longitude;
+      const acc = Math.round(pos.coords.accuracy || 0);
+
+      submitLatInput.value = curLat;
+      submitLngInput.value = curLng;
+
+      // Buat / pindahkan marker posisi siswa saat ini di verifyMap
+      if (verifyUserMarker) {
+        verifyUserMarker.setLatLng([curLat, curLng]);
+      } else {
+        const blueIcon = L.icon({
+          iconUrl: 'https://cdn.jsdelivr.net/gh/pointhi/leaflet-color-markers@master/img/marker-icon-2x-blue.png',
+          shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        });
+        verifyUserMarker = L.marker([curLat, curLng], { icon: blueIcon }).addTo(verifyMap);
+      }
+      verifyUserMarker.bindPopup('<b>Posisi Anda Saat Ini</b><br>' + curLat.toFixed(6) + ', ' + curLng.toFixed(6)).openPopup();
+
+      if (currentTargetLat !== null && currentTargetLng !== null) {
+        const dist = calculateDistance(curLat, curLng, currentTargetLat, currentTargetLng);
+        const MAX_RADIUS = 250; // Radius toleransi 250 meter
+
+        // Sesuaikan pandangan peta agar mencakup kedua titik
+        const bounds = L.latLngBounds([
+          [currentTargetLat, currentTargetLng],
+          [curLat, curLng]
+        ]);
+        verifyMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+
+        if (dist <= MAX_RADIUS) {
+          verifyLocationStatus.innerHTML = '<div class="alert alert-success py-2 px-3 mb-0 mt-2">' +
+            '<strong><i class="bi bi-check-circle-fill"></i> Lokasi Sesuai!</strong><br>' +
+            '<small>Anda berada di area tempat PKL (Jarak: <strong>' + dist + ' meter</strong> dari titik terdaftar, Akurasi GPS: ±' + acc + 'm).</small></div>';
+        } else {
+          verifyLocationStatus.innerHTML = '<div class="alert alert-warning py-2 px-3 mb-0 mt-2">' +
+            '<strong><i class="bi bi-exclamation-triangle-fill"></i> Peringatan Lokasi!</strong><br>' +
+            '<small>Lokasi Anda saat ini berjarak <strong>' + dist + ' meter</strong> dari titik PKL yang didaftarkan (toleransi radius: ' + MAX_RADIUS + 'm). Pastikan Anda berada di tempat PKL saat mengirim jurnal.</small></div>';
+        }
+      } else {
+        verifyMap.setView([curLat, curLng], 16);
+        verifyLocationStatus.innerHTML = '<div class="alert alert-info py-2 px-3 mb-0 mt-2">' +
+          '<small><i class="bi bi-geo-alt"></i> Lokasi Anda terdeteksi: ' + curLat.toFixed(6) + ', ' + curLng.toFixed(6) + ' (Akurasi: ±' + acc + 'm)</small></div>';
+      }
+
+      verifyLocationBtn.disabled = false;
+      verifyLocationBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Deteksi Ulang Lokasi';
+    }, function(err){
+      let msg = 'Gagal mendeteksi lokasi GPS.';
+      if (err.code === 1) msg = 'Akses lokasi ditolak. Harap izinkan akses lokasi di browser Anda.';
+      else if (err.code === 2) msg = 'Sinyal GPS tidak tersedia. Pastikan fitur lokasi perangkat telah aktif.';
+      else if (err.code === 3) msg = 'Waktu permintaan habis. Coba lagi.';
+
+      verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-1 px-2 mb-0 mt-2"><i class="bi bi-exclamation-triangle"></i> ' + msg + '</div>';
+      verifyLocationBtn.disabled = false;
+    }, {enableHighAccuracy: true, timeout: 15000, maximumAge: 0});
+  });
+
+  // Penanganan Kamera & Galeri Foto
+  openCameraBtn.addEventListener('click', function(){
+    cameraPhotoInput.click();
+  });
+
+  openGalleryBtn.addEventListener('click', function(){
+    actualPhotoInput.click();
+  });
+
+  // Saat foto diambil dari kamera langsung
+  cameraPhotoInput.addEventListener('change', function(){
+    if (this.files && this.files[0]) {
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(this.files[0]);
+        actualPhotoInput.files = dt.files;
+      } catch(e) {}
+      handleFileSelected(this.files[0]);
+    }
+  });
+
+  // Saat foto dipilih dari galeri / file biasa
+  actualPhotoInput.addEventListener('change', function(){
+    if (this.files && this.files[0]) {
+      handleFileSelected(this.files[0]);
+    }
+  });
+
+  function handleFileSelected(file){
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('File harus berupa gambar (JPG, PNG, atau WEBP).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e){
+      photoPreviewImg.src = e.target.result;
+      const sizeKB = Math.round(file.size / 1024);
+      photoFileInfo.textContent = file.name + ' (' + sizeKB + ' KB)';
+      photoPreviewCard.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  removePhotoBtn.addEventListener('click', function(){
+    actualPhotoInput.value = '';
+    cameraPhotoInput.value = '';
+    photoPreviewImg.src = '';
+    photoPreviewCard.style.display = 'none';
+  });
+
+  // Validasi form sebelum submit
+  journalForm.addEventListener('submit', function(e){
+    const sid = studentSelect.value;
+    if (!sid) {
+      e.preventDefault();
+      alert('Pilih nama siswa terlebih dahulu.');
+      studentSelect.focus();
+      return;
+    }
+
+    if (isFirstTime) {
+      if (!workplaceInput.value.trim()) {
+        e.preventDefault();
+        alert('Nama tempat PKL wajib diisi saat pertama kali mengisi jurnal.');
+        workplaceInput.focus();
+        return;
+      }
+      if (!submitLatInput.value || !submitLngInput.value) {
+        e.preventDefault();
+        alert('Harap tentukan titik lokasi PKL Anda pada peta Google Maps!');
+        registerLocationBtn.scrollIntoView({behavior: 'smooth', block: 'center'});
+        return;
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}
