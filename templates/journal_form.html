@@ -486,9 +486,11 @@
         } else {
           locationVerified = false;
           submitLatInput.value = ''; submitLngInput.value = ''; submitAccuracyInput.value = ''; submitTimestampInput.value = '';
-          verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0 mt-2">' +
-            '<strong><i class="bi bi-exclamation-triangle-fill"></i> Peringatan Lokasi!</strong><br>' +
-            '<small>Lokasi Anda saat ini berjarak <strong>' + dist + ' meter</strong> dari titik PKL yang didaftarkan (toleransi radius: ' + MAX_RADIUS + 'm). Pastikan Anda berada di tempat PKL saat mengirim jurnal.</small></div>';
+          verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0 mt-2" role="alert">' +
+            '<strong><i class="bi bi-exclamation-triangle-fill"></i> Lokasi di luar radius PKL!</strong><br>' +
+            '<small>Jarak perangkat Anda <strong>' + dist + ' meter</strong> dari titik PKL. Batas maksimal untuk status Hadir adalah <strong>' + MAX_RADIUS + ' meter</strong>. Pengiriman dengan status Hadir tidak dapat dilanjutkan dari lokasi ini. Jika Anda memilih Izin atau Sakit, radius tidak diwajibkan.</small></div>';
+          verifyLocationStatus.scrollIntoView({behavior: 'smooth', block: 'center'});
+          window.alert('Lokasi tidak sesuai! Jarak Anda ' + dist + ' meter dari titik PKL, sedangkan batas maksimal untuk status Hadir adalah ' + MAX_RADIUS + ' meter. Status Hadir tidak dapat dikirim dari luar radius.');
         }
       } else {
         locationVerified = true;
@@ -571,7 +573,9 @@
       verifyLocationStatus.innerHTML = '<div class="alert alert-info py-2 px-3 mb-0 mt-2"><strong>Status ' + attendanceStatus.value + '.</strong><br><small>Lokasi di luar radius PKL diperbolehkan untuk status Izin atau Sakit. GPS tetap direkam.</small></div>';
     } else if (lastDetectedDistance > 250 && attendanceStatus.value === 'Hadir') {
       locationVerified = false;
-      verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0 mt-2"><strong>Status Hadir wajib di lokasi PKL.</strong><br><small>Jarak Anda ' + lastDetectedDistance + ' meter. Batas maksimal 250 meter.</small></div>';
+      verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0 mt-2" role="alert"><strong>Lokasi di luar radius PKL!</strong><br><small>Jarak Anda ' + lastDetectedDistance + ' meter. Batas maksimal untuk status Hadir adalah 250 meter. Pilih Izin atau Sakit jika memang sesuai kondisi kehadiran Anda.</small></div>';
+      verifyLocationStatus.scrollIntoView({behavior: 'smooth', block: 'center'});
+      window.alert('Status Hadir hanya bisa dikirim dari radius maksimal 250 meter dari titik PKL. Lokasi Anda saat ini ' + lastDetectedDistance + ' meter.');
     }
   });
 
