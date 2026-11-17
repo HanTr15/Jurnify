@@ -62,7 +62,7 @@
                 <!-- Wadah Peta Google Maps Interaktif -->
                 <div id="registerMap" class="interactive-map-box"></div>
                 <div class="interactive-map-hint">
-                  <i class="bi bi-info-circle-fill text-info"></i> Geser pin merah atau klik pada peta untuk menentukan titik tempat PKL yang presisi.
+                  <i class="bi bi-info-circle-fill text-info"></i> Tekan dan geser pin pada peta, atau ketuk lokasi yang diinginkan untuk menentukan titik PKL. Setelah titik GPS awal diambil, Anda bisa menyesuaikannya di peta.
                 </div>
                 <div id="registerLocationStatus" class="mt-2" style="font-size: 0.85rem;"></div>
               </div>
@@ -250,7 +250,16 @@
         attribution: '&copy; Google Maps'
       }).addTo(registerMap);
 
-      registerMarker = L.marker([lat, lng], { draggable: false }).addTo(registerMap);
+      registerMarker = L.marker([lat, lng], { draggable: true, autoPan: true }).addTo(registerMap);
+      // Izinkan siswa menggeser pin atau memilih titik langsung pada peta.
+      registerMarker.on('dragend', function(){
+        const point = registerMarker.getLatLng();
+        setRegisterCoords(point.lat, point.lng);
+      });
+      registerMap.on('click', function(event){
+        registerMarker.setLatLng(event.latlng);
+        setRegisterCoords(event.latlng.lat, event.latlng.lng);
+      });
     } else {
       registerMap.setView([lat, lng], zoom);
       registerMarker.setLatLng([lat, lng]);
