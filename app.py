@@ -431,8 +431,8 @@ def add_journal():
                     target_lat, target_lng = cur_lat, cur_lng
 
                 distance = calculate_distance(cur_lat, cur_lng, target_lat, target_lng)
-                if distance is None or distance > 250:
-                    raise ValueError(f"Lokasi tidak sesuai dengan tempat PKL (jarak {round(distance or 0)} meter; batas 250 meter). Jurnal tidak dapat dikirim.")
+                if status == "Hadir" and (distance is None or distance > 250):
+                    raise ValueError(f"Status Hadir wajib dikirim dari area PKL (jarak {round(distance or 0)} meter; batas 250 meter). Untuk status Izin atau Sakit, pengiriman dari luar radius diperbolehkan.")
 
                 conn.execute("""
                     INSERT INTO journals

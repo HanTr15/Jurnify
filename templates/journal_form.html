@@ -85,8 +85,8 @@
                     <label class="form-label fw-semibold mb-0"><i class="bi bi-geo-fill text-info"></i> Deteksi Lokasi Kehadiran (Peta Google Maps)</label>
                     <p class="text-muted small mb-0">Pastikan Anda berada di lokasi PKL saat mengirim jurnal.</p>
                   </div>
-                  <button type="button" class="btn btn-outline-info btn-sm" id="verifyLocationBtn">
-                    <i class="bi bi-crosshair"></i> Deteksi Lokasi Saya Sekarang
+                  <button type="button" class="btn btn-outline-info btn-sm" id="verifyLocationBtn" style="display:none" aria-hidden="true" tabindex="-1">
+                    Deteksi lokasi otomatis
                   </button>
                 </div>
 
@@ -110,7 +110,7 @@
             <!-- Status Kehadiran -->
             <div class="mb-3">
               <label class="form-label fw-bold">Status Kehadiran <span class="text-danger">*</span></label>
-              <select class="form-select" name="status" required>
+              <select class="form-select" name="status" id="attendanceStatus" required>
                 <option value="">-- Pilih status --</option>
                 <option value="Hadir">Hadir</option>
                 <option value="Izin">Izin</option>
@@ -179,6 +179,7 @@
 <script>
 (function(){
   const studentSelect = document.getElementById('studentSelect');
+  const attendanceStatus = document.getElementById('attendanceStatus');
   const firstTimePklSection = document.getElementById('firstTimePklSection');
   const registeredPklSection = document.getElementById('registeredPklSection');
   const workplaceInput = document.getElementById('workplaceInput');
@@ -194,6 +195,7 @@
   const submitAccuracyInput = document.getElementById('submitAccuracy');
   const submitTimestampInput = document.getElementById('submitTimestamp');
   let locationVerified = false;
+  let lastDetectedDistance = null;
   const journalForm = document.getElementById('journalForm');
 
   // Camera & Photo Elements
@@ -284,9 +286,14 @@
     if (verifyCircle) verifyMap.removeLayer(verifyCircle);
     if (verifyUserMarker) { verifyMap.removeLayer(verifyUserMarker); verifyUserMarker = null; }
 
-    // Marker Tempat PKL Terdaftar (Merah)
-    verifyTargetMarker = L.marker([targetLat, targetLng]).addTo(verifyMap);
-    verifyTargetMarker.bindPopup('<b>Tempat PKL Terdaftar</b><br>' + targetLat.toFixed(6) + ', ' + targetLng.toFixed(6)).openPopup();
+    // Marker titik PKL: biru
+    const pklBlueIcon = L.icon({
+      iconUrl: 'https://cdn.jsdelivr.net/gh/pointhi/leaflet-color-markers@master/img/marker-icon-2x-blue.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+    });
+    verifyTargetMarker = L.marker([targetLat, targetLng], { icon: pklBlueIcon }).addTo(verifyMap);
+    verifyTargetMarker.bindPopup('<b>Titik PKL Terdaftar</b><br>' + targetLat.toFixed(6) + ', ' + targetLng.toFixed(6)).openPopup();
 
     // Lingkaran radius toleransi 250m
     verifyCircle = L.circle([targetLat, targetLng], {
@@ -343,11 +350,13 @@
       currentTargetLat = s.lat;
       currentTargetLng = s.lng;
       registeredCoordsBadge.innerHTML = '<i class="bi bi-geo-alt"></i> Titik PKL: ' + s.lat.toFixed(5) + ', ' + s.lng.toFixed(5);
-      verifyLocationStatus.innerHTML = '<span class="text-muted small"><i class="bi bi-info-circle"></i> Tekan tombol "Deteksi Lokasi Saya Sekarang" untuk memeriksa lokasi kehadiran Anda pada peta.</span>';
+      verifyLocationStatus.innerHTML = '<span class="text-muted small"><i class="bi bi-info-circle"></i> Lokasi perangkat akan dideteksi otomatis dan dicocokkan dengan titik PKL yang sudah terdaftar.</span>';
 
       setTimeout(() => {
         initVerifyMap(s.lat, s.lng);
-      }, 150);
+        // Pemilihan nama siswa merupakan interaksi pengguna yang dapat memicu dialog izin lokasi browser.
+        verifyLocationBtn.click();
+      }, 250);
     }
   }
 
@@ -393,7 +402,7 @@
       registerLocationBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Ambil Ulang Titik GPS';
     }, function(err){
       let msg = 'Gagal mengambil titik lokasi GPS.';
-      if (err.code === 1) msg = 'Akses lokasi ditolak. Izinkan akses GPS pada browser/perangkat Anda.';
+      if (err.code === 1) msg = 'Izin lokasi belum diberikan. Aktifkan izin Lokasi untuk situs Jurnify melalui ikon pengaturan di samping alamat website, lalu tekan tombol ini lagi.';
       else if (err.code === 2) msg = 'Lokasi tidak dapat ditemukan. Pastikan GPS aktif.';
       else if (err.code === 3) msg = 'Waktu permintaan lokasi habis. Silakan coba lagi.';
 
@@ -432,20 +441,21 @@
       if (verifyUserMarker) {
         verifyUserMarker.setLatLng([curLat, curLng]);
       } else {
-        const blueIcon = L.icon({
-          iconUrl: 'https://cdn.jsdelivr.net/gh/pointhi/leaflet-color-markers@master/img/marker-icon-2x-blue.png',
+        const redIcon = L.icon({
+          iconUrl: 'https://cdn.jsdelivr.net/gh/pointhi/leaflet-color-markers@master/img/marker-icon-2x-red.png',
           shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
           iconSize: [25, 41],
           iconAnchor: [12, 41],
           popupAnchor: [1, -34],
           shadowSize: [41, 41]
         });
-        verifyUserMarker = L.marker([curLat, curLng], { icon: blueIcon }).addTo(verifyMap);
+        verifyUserMarker = L.marker([curLat, curLng], { icon: redIcon }).addTo(verifyMap);
       }
       verifyUserMarker.bindPopup('<b>Posisi Anda Saat Ini</b><br>' + curLat.toFixed(6) + ', ' + curLng.toFixed(6)).openPopup();
 
       if (currentTargetLat !== null && currentTargetLng !== null) {
         const dist = calculateDistance(curLat, curLng, currentTargetLat, currentTargetLng);
+        lastDetectedDistance = dist;
         const MAX_RADIUS = 250; // Radius toleransi 250 meter
 
         // Sesuaikan pandangan peta agar mencakup kedua titik
@@ -455,11 +465,15 @@
         ]);
         verifyMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
 
-        if (dist <= MAX_RADIUS) {
+        if (dist <= MAX_RADIUS || (attendanceStatus && ['Izin', 'Sakit'].includes(attendanceStatus.value))) {
           locationVerified = true;
-          verifyLocationStatus.innerHTML = '<div class="alert alert-success py-2 px-3 mb-0 mt-2">' +
-            '<strong><i class="bi bi-check-circle-fill"></i> Lokasi Sesuai!</strong><br>' +
-            '<small>Anda berada di area tempat PKL (Jarak: <strong>' + dist + ' meter</strong> dari titik terdaftar, Akurasi GPS: ±' + acc + 'm).</small></div>';
+          if (dist <= MAX_RADIUS) {
+            verifyLocationStatus.innerHTML = '<div class="alert alert-success py-2 px-3 mb-0 mt-2">' +
+              '<strong><i class="bi bi-check-circle-fill"></i> Lokasi Sesuai!</strong><br>' +
+              '<small>Anda berada di area tempat PKL (Jarak: <strong>' + dist + ' meter</strong>, Akurasi GPS: ±' + acc + 'm).</small></div>';
+          } else {
+            verifyLocationStatus.innerHTML = '<div class="alert alert-info py-2 px-3 mb-0 mt-2"><strong>Status ' + attendanceStatus.value + '.</strong><br><small>Lokasi berada ' + dist + ' meter dari titik PKL. Radius hanya diwajibkan untuk status Hadir.</small></div>';
+          }
         } else {
           locationVerified = false;
           submitLatInput.value = ''; submitLngInput.value = ''; submitAccuracyInput.value = ''; submitTimestampInput.value = '';
@@ -478,9 +492,9 @@
       verifyLocationBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Deteksi Ulang Lokasi';
     }, function(err){
       let msg = 'Gagal mendeteksi lokasi GPS.';
-      if (err.code === 1) msg = 'Akses lokasi ditolak. Harap izinkan akses lokasi di browser Anda.';
-      else if (err.code === 2) msg = 'Sinyal GPS tidak tersedia. Pastikan fitur lokasi perangkat telah aktif.';
-      else if (err.code === 3) msg = 'Waktu permintaan habis. Coba lagi.';
+      if (err.code === 1) msg = 'Izin lokasi belum aktif. Aktifkan izin Lokasi untuk situs Jurnify melalui ikon pengaturan di samping alamat website, lalu pilih ulang nama siswa atau kirim jurnal kembali.';
+      else if (err.code === 2) msg = 'Sinyal GPS tidak tersedia. Pastikan fitur lokasi perangkat telah aktif, lalu coba kirim jurnal kembali.';
+      else if (err.code === 3) msg = 'Waktu permintaan lokasi habis. Pastikan GPS aktif, lalu coba kirim jurnal kembali.';
 
       verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-1 px-2 mb-0 mt-2"><i class="bi bi-exclamation-triangle"></i> ' + msg + '</div>';
       verifyLocationBtn.disabled = false;
@@ -538,6 +552,20 @@
     photoPreviewCard.style.display = 'none';
   });
 
+  // Radius hanya diwajibkan untuk status Hadir. Izin/Sakit tetap merekam GPS,
+  // tetapi boleh dikirim dari luar area PKL.
+  attendanceStatus.addEventListener('change', function(){
+    if (lastDetectedDistance === null) return;
+    const isExcused = ['Izin', 'Sakit'].includes(attendanceStatus.value);
+    locationVerified = lastDetectedDistance <= 250 || isExcused;
+    if (lastDetectedDistance > 250 && isExcused) {
+      verifyLocationStatus.innerHTML = '<div class="alert alert-info py-2 px-3 mb-0 mt-2"><strong>Status ' + attendanceStatus.value + '.</strong><br><small>Lokasi di luar radius PKL diperbolehkan untuk status Izin atau Sakit. GPS tetap direkam.</small></div>';
+    } else if (lastDetectedDistance > 250 && attendanceStatus.value === 'Hadir') {
+      locationVerified = false;
+      verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0 mt-2"><strong>Status Hadir wajib di lokasi PKL.</strong><br><small>Jarak Anda ' + lastDetectedDistance + ' meter. Batas maksimal 250 meter.</small></div>';
+    }
+  });
+
   // Validasi form sebelum submit
   journalForm.addEventListener('submit', async function(e){
     e.preventDefault();
@@ -549,16 +577,36 @@
       return;
     }
 
-    try {
-      if (!navigator.geolocation) throw new Error('Browser tidak mendukung GPS.');
-      if (navigator.permissions && navigator.permissions.query) {
+    if (!navigator.geolocation) {
+      verifyLocationStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0">Browser ini tidak mendukung GPS. Gunakan browser yang mendukung akses lokasi.</div>';
+      verifyLocationBtn.scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
+
+    // Jika izin masih berstatus prompt, minta browser menampilkan dialog izin saat aksi submit pengguna.
+    // Browser tidak mengizinkan situs memunculkan dialog izin secara otomatis tanpa interaksi pengguna.
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
         const permission = await navigator.permissions.query({name: 'geolocation'});
-        if (permission.state !== 'granted') throw new Error('Aktifkan izin lokasi untuk situs Jurnify pada pengaturan browser, lalu deteksi lokasi ulang.');
-      }
-    } catch (err) { alert(err.message || 'Izin lokasi wajib diaktifkan.'); return; }
+        if (permission.state === 'prompt') {
+          verifyLocationStatus.innerHTML = '<div class="alert alert-info py-2 px-3 mb-2"><strong>Izin lokasi diperlukan.</strong><br>Browser akan meminta izin lokasi. Pilih <strong>Izinkan</strong>, lalu deteksi lokasi kembali.</div>';
+          verifyLocationBtn.scrollIntoView({behavior:'smooth', block:'center'});
+          verifyLocationBtn.click();
+          return;
+        }
+        if (permission.state === 'denied') {
+          verifyLocationStatus.innerHTML = '<div class="alert alert-warning py-2 px-3 mb-2"><strong>Izin lokasi diblokir.</strong><br>Klik ikon pengaturan/kunci di samping alamat website, ubah Izin Lokasi menjadi <strong>Izinkan</strong>, lalu tekan Deteksi Ulang Lokasi.</div>';
+          verifyLocationBtn.scrollIntoView({behavior:'smooth', block:'center'});
+          return;
+        }
+      } catch (_) { /* Lanjutkan ke validasi koordinat; Permissions API tidak tersedia di sebagian browser. */ }
+    }
+
     if (!submitLatInput.value || !submitLngInput.value || !submitAccuracyInput.value || !submitTimestampInput.value || !locationVerified) {
-      alert('Lokasi belum terverifikasi. Aktifkan izin lokasi, deteksi lokasi sekarang, dan pastikan berada di area PKL.');
-      verifyLocationBtn.scrollIntoView({behavior:'smooth', block:'center'}); return;
+      verifyLocationStatus.innerHTML = '<div class="alert alert-info py-2 px-3 mb-2"><strong>Lokasi sedang diminta.</strong><br>Jurnify akan mengambil lokasi perangkat dan mencocokkannya dengan titik PKL terdaftar. Izinkan akses lokasi jika browser meminta izin.</div>';
+      verifyLocationBtn.scrollIntoView({behavior:'smooth', block:'center'});
+      verifyLocationBtn.click();
+      return;
     }
 
     if (isFirstTime) {
