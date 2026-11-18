@@ -45,22 +45,16 @@ Dengan menggabungkan kemudahan akses web responsif, validasi koordinat GPS presi
 - **Smart OCR Scanner (Foto ke Data Siswa):** Cukup foto lembar daftar nama/absensi fisik siswa, Gemini Vision AI akan mengekstrak nama, NIS, dan penempatan lokasi PKL secara instan ke tabel terstruktur siap impor.
 - **Admin AI Assistant (Chatbot):** Fitur asisten cerdas untuk guru/admin guna menganalisis keaktifan jurnal, membantu rekapitulasi data, serta memberikan rekomendasi evaluasi bimbingan PKL.
 
-### 3. Keamanan & Proteksi Privasi Tingkat Tinggi
-- **Vercel Blob Private Store:** Foto jurnal siswa berstatus *private* dan tidak memiliki URL publik langsung. Akses foto wajib melalui endpoint terproteksi (`/foto/...`) dengan verifikasi otentikasi sesi dan hak akses (mencegah celah IDOR).
-- **Proteksi CSRF Global:** Setiap request mutasi data diamankan dengan token CSRF (`Flask-WTF`).
-- **Enkripsi Kredensial Akun Kelas:** Menggunakan enkripsi simetris (Fernet via `cryptography`) dan HMAC SHA-256 untuk kredensial kelas yang aman.
-- **Role-Based Access Control (RBAC):** Pemisahan ketat hak akses antara Administrator (Guru/Pembimbing) dan Akun Kelas/Siswa.
-
-### 4. Verifikasi & Alur Bimbingan Interaktif
+### 3. Verifikasi & Alur Bimbingan Interaktif
 - **Review Real-time:** Guru pembimbing dapat menyetujui (*Approve*) atau menolak (*Reject*) jurnal harian disertai catatan masukan/revisi.
 - **Pembaruan Jurnal:** Siswa dapat memperbaiki jurnal jika statusnya memerlukan revisi dari pembimbing.
 
-### 5. Smart Monthly Archive & Auto-Purge Storage
+### 4. Smart Monthly Archive & Auto-Purge Storage
 - **Kompilasi Arsip Bulanan:** Menghasilkan dokumen PDF rekap per kelas yang menyematkan seluruh ringkasan kehadiran, deskripsi tugas, dan **foto bukti asli secara embedded**.
 - **Penyimpanan di PostgreSQL (`BYTEA`):** Arsip PDF disimpan langsung di database, sehingga aman dari karakteristik serverless filesystem ephemeral.
 - **Pembersihan Storage Terjadwal:** Fitur "Bersihkan Data" memungkinkan penghapusan foto asli dari Vercel Blob untuk menghemat kuota penyimpanan tanpa kehilangan arsip visual.
 
-### 6. Laporan & Ekspor Data Siap Cetak
+### 5. Laporan & Ekspor Data Siap Cetak
 - **Ekspor PDF Rekapitulasi Kelas:** Laporan rapi siap cetak untuk diserahkan ke pihak kurikulum sekolah/industri.
 - **Ekspor PDF Individual Siswa:** Dilengkapi foto kegiatan per hari untuk lampiran laporan akhir magang.
 - **Ekspor CSV Spreadsheet:** Memudahkan rekap nilai dan analisis data di Microsoft Excel atau Google Sheets.
