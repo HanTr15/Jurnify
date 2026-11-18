@@ -185,6 +185,5 @@ python3 app.py
 Akses aplikasi melalui browser di: `http://127.0.0.1:5000`
 
 <div align="center">
-  <p>Dikembangkan Oleh SMKN 1 Pungging.</p>
   <sub>© 2026 Jurnify. All rights reserved.</sub>
 </div>
