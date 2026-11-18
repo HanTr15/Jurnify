@@ -28,7 +28,7 @@
 
 ---
 
-## 🌟 Tentang Jurnify
+## Tentang Jurnify
 
 **Jurnify** dirancang untuk memecahkan kendala klasik pengelolaan jurnal PKL konvensional (buku cetak fisik) yang rentan rusak, sulit dipantau secara real-time, dan memakan waktu saat rekapitulasi nilai akhir. 
 
@@ -36,40 +36,40 @@ Dengan menggabungkan kemudahan akses web responsif, validasi koordinat GPS presi
 
 ---
 
-## ✨ Fitur Utama
+## Fitur Utama
 
-### 📍 1. Presensi & Jurnal Kegiatan Harian
+### 1. Presensi & Jurnal Kegiatan Harian
 - **Status Kehadiran Fleksibel:** Mendukung status *Hadir*, *Izin*, *Sakit*, maupun *Libur/WFH*.
 - **GPS Radius Validation (Anti-Fake Location):** Menghitung jarak langsung antara posisi perangkat siswa saat mengirim jurnal dengan titik koordinat DUDI menggunakan rumus **Haversine**. Siswa akan diperingatkan jika berada di luar radius toleransi.
 - **Unggah Foto Bukti Otentik:** Dokumentasi visual kegiatan kerja dengan kompresi cerdas dan limit keamanan request (maksimal 4 MB).
 
-### 🤖 2. Integrasi Google Gemini AI
+### 2. Integrasi Google Gemini AI
 - **Smart OCR Scanner (Foto ke Data Siswa):** Cukup foto lembar daftar nama/absensi fisik siswa, Gemini Vision AI akan mengekstrak nama, NIS, dan penempatan lokasi PKL secara instan ke tabel terstruktur siap impor.
 - **Admin AI Assistant (Chatbot):** Fitur asisten cerdas untuk guru/admin guna menganalisis keaktifan jurnal, membantu rekapitulasi data, serta memberikan rekomendasi evaluasi bimbingan PKL.
 
-### 🛡️ 3. Keamanan & Proteksi Privasi Tingkat Tinggi
+### 3. Keamanan & Proteksi Privasi Tingkat Tinggi
 - **Vercel Blob Private Store:** Foto jurnal siswa berstatus *private* dan tidak memiliki URL publik langsung. Akses foto wajib melalui endpoint terproteksi (`/foto/...`) dengan verifikasi otentikasi sesi dan hak akses (mencegah celah IDOR).
 - **Proteksi CSRF Global:** Setiap request mutasi data diamankan dengan token CSRF (`Flask-WTF`).
 - **Enkripsi Kredensial Akun Kelas:** Menggunakan enkripsi simetris (Fernet via `cryptography`) dan HMAC SHA-256 untuk kredensial kelas yang aman.
 - **Role-Based Access Control (RBAC):** Pemisahan ketat hak akses antara Administrator (Guru/Pembimbing) dan Akun Kelas/Siswa.
 
-### 📑 4. Verifikasi & Alur Bimbingan Interaktif
+### 4. Verifikasi & Alur Bimbingan Interaktif
 - **Review Real-time:** Guru pembimbing dapat menyetujui (*Approve*) atau menolak (*Reject*) jurnal harian disertai catatan masukan/revisi.
 - **Pembaruan Jurnal:** Siswa dapat memperbaiki jurnal jika statusnya memerlukan revisi dari pembimbing.
 
-### 📦 5. Smart Monthly Archive & Auto-Purge Storage
+### 5. Smart Monthly Archive & Auto-Purge Storage
 - **Kompilasi Arsip Bulanan:** Menghasilkan dokumen PDF rekap per kelas yang menyematkan seluruh ringkasan kehadiran, deskripsi tugas, dan **foto bukti asli secara embedded**.
 - **Penyimpanan di PostgreSQL (`BYTEA`):** Arsip PDF disimpan langsung di database, sehingga aman dari karakteristik serverless filesystem ephemeral.
 - **Pembersihan Storage Terjadwal:** Fitur "Bersihkan Data" memungkinkan penghapusan foto asli dari Vercel Blob untuk menghemat kuota penyimpanan tanpa kehilangan arsip visual.
 
-### 📊 6. Laporan & Ekspor Data Siap Cetak
+### 6. Laporan & Ekspor Data Siap Cetak
 - **Ekspor PDF Rekapitulasi Kelas:** Laporan rapi siap cetak untuk diserahkan ke pihak kurikulum sekolah/industri.
 - **Ekspor PDF Individual Siswa:** Dilengkapi foto kegiatan per hari untuk lampiran laporan akhir magang.
 - **Ekspor CSV Spreadsheet:** Memudahkan rekap nilai dan analisis data di Microsoft Excel atau Google Sheets.
 
 ---
 
-## 🏗️ Arsitektur & Alur Sistem
+## Arsitektur & Alur Sistem
 
 ```mermaid
 flowchart TD
@@ -110,7 +110,7 @@ flowchart TD
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 
 | Layer | Komponen / Teknologi | Keterangan |
 |---|---|---|
@@ -125,7 +125,7 @@ flowchart TD
 
 ---
 
-## 📂 Struktur Direktori
+## Struktur Direktori
 
 ```text
 jurnify/
@@ -157,31 +157,7 @@ jurnify/
 └── uploads/                 # Direktori fallback lokal (khusus development non-Vercel)
 ```
 
----
-
-## ⚙️ Konfigurasi Environment Variables
-
-Buat berkas `.env` di root proyek (atau isi pada panel Vercel Settings):
-
-| Variabel | Tipe | Wajib? | Deskripsi & Contoh |
-|---|:---:|:---:|---|
-| `DATABASE_URL` | String | **Ya** | PostgreSQL URI dari Neon (contoh: `postgresql://user:pass@ep-xyz.neon.tech/neondb?sslmode=require`) |
-| `SECRET_KEY` | String | **Ya** | Kunci rahasia untuk sesi cookie & enkripsi token (minimal 32 byte acak) |
-| `ADMIN_PASSWORD` | String | **Ya** | Password awal untuk akun bawaan `admin` saat database pertama kali diinisialisasi |
-| `GEMINI_API_KEY` | String | Opsional | Kunci API dari Google AI Studio untuk mengaktifkan AI Vision OCR & Chatbot |
-| `GEMINI_MODEL` | String | Opsional | Model Gemini yang digunakan (default: `gemini-flash-lite-latest` atau `gemini-1.5-flash`) |
-| `BLOB_STORE_ID` | String | Otomatis | Terisi otomatis saat Vercel Blob Store dihubungkan ke project |
-| `BLOB_READ_WRITE_TOKEN`| String | Khusus | Token manual jika Anda tidak menggunakan sistem Vercel OIDC otomatis |
-
-> [!TIP]
-> **Cara menghasilkan `SECRET_KEY` yang kuat:**
-> ```bash
-> python3 -c "import secrets; print(secrets.token_urlsafe(48))"
-> ```
-
----
-
-## 🚀 Instalasi Lokal (Local Development)
+## Instalasi Lokal (Local Development)
 
 Jika Anda ingin menjalankan atau mengembangkan proyek ini di komputer lokal:
 
@@ -216,85 +192,7 @@ python3 app.py
 ```
 Akses aplikasi melalui browser di: `http://127.0.0.1:5000`
 
----
-
-## ☁️ Panduan Deployment ke Vercel
-
-Jurnify telah dioptimalkan secara native untuk serverless deployment di Vercel:
-
-### 1. Siapkan Database Neon PostgreSQL
-1. Buka [neon.tech](https://neon.tech) dan buat project baru.
-2. Salin **Connection String** PostgreSQL (pilih mode *Pooled connection* untuk efisiensi serverless).
-
-### 2. Hubungkan Repository ke Vercel
-1. Buka [Vercel Dashboard](https://vercel.com/new) dan import repository `Jurnify`.
-2. Pastikan **Framework Preset** terdeteksi sebagai `Other` atau `Flask`.
-3. Biarkan *Build Command* dan *Output Directory* kosong (sesuai setelan default).
-
-### 3. Buat Vercel Blob Store (Private Mode)
-1. Pada menu dashboard proyek di Vercel, buka tab **Storage** → klik **Create Database** → pilih **Blob**.
-2. **PENTING:** Pilih tipe **Private Store** (bukan Public) karena foto jurnal siswa dilindungi hak akses.
-3. Hubungkan (*Connect*) Blob Store tersebut ke deployment *Production* dan *Preview*. Vercel akan otomatis menyuntikkan token integrasi.
-
-### 4. Masukkan Environment Variables di Vercel
-Pada menu **Settings** → **Environment Variables**, masukkan:
-- `DATABASE_URL` : URL koneksi Neon PostgreSQL.
-- `SECRET_KEY` : String acak hasil generate.
-- `ADMIN_PASSWORD` : Kata sandi untuk login awal akun `admin`.
-- `GEMINI_API_KEY` : Kunci API Google Gemini (dari [Google AI Studio](https://aistudio.google.com/apikey)).
-- `GEMINI_MODEL` : `gemini-flash-lite-latest`
-
-### 5. Deploy & Inisialisasi Database
-1. Klik tombol **Deploy** (atau *Redeploy*).
-2. Setelah deployment berstatus *Ready*, kunjungi domain URL `*.vercel.app` Anda.
-3. Aplikasi akan secara otomatis melakukan migrasi tabel database dan membuat akun admin pertama pada request pertama.
-4. Login menggunakan akun:
-   - **Username:** `admin`
-   - **Password:** Nilai yang Anda set di `ADMIN_PASSWORD`
-5. Segera perbarui kata sandi admin melalui panel kelola akun demi keamanan.
-
----
-
-## 🧪 Alur Pengujian & Verifikasi Fitur
-
-Sebelum mendistribusikan akun ke siswa, lakukan checklist berikut:
-- [ ] **Login Admin:** Masuk dengan username `admin` dan pastikan menu berjalan lancar.
-- [ ] **Setup Kelas & Siswa:** Buat satu akun kelas dan tambahkan data siswa beserta titik koordinat PKL.
-- [ ] **Test OCR Scan:** Uji fitur scan foto absensi dengan mengunggah gambar daftar siswa untuk memastikan Gemini API bekerja.
-- [ ] **Input Jurnal Siswa:** Login menggunakan akun kelas, input jurnal kegiatan harian beserta foto dokumentasi.
-- [ ] **Validasi Geolocation:** Cek apakah penghitungan jarak (Haversine) mendeteksi lokasi dengan akurat.
-- [ ] **Verifikasi Admin:** Buka menu verifikasi pada akun admin, berikan persetujuan (*Approve*) atau revisi.
-- [ ] **Uji Akses Foto Terproteksi:** Coba salin URL foto `/foto/...` lalu buka di tab *Incognito* tanpa login. Sistem harus mengarahkan ke halaman login (tidak bisa diakses publik secara bebas).
-- [ ] **Ekspor Laporan & Arsip:** Unduh Rekapitulasi PDF dan pastikan foto tertanam dengan baik di lembar dokumen.
-
----
-
-## 🔒 Praktik Terbaik Keamanan
-
-1. **Jangan Menyimpan Berkas di Filesystem Vercel:** Filesystem Vercel Serverless bersifat *ephemeral* (sementara). Seluruh file foto wajib menggunakan Vercel Blob Private Store.
-2. **Kerahasiaan `.env`:** Jangan pernah melakukan `git commit` pada berkas `.env` asli atau membocorkan `DATABASE_URL` dan `SECRET_KEY`.
-3. **Rotasi Kredensial:** Selalu ubah password awal `ADMIN_PASSWORD` sesaat setelah sistem pertama kali dipasang di production.
-
----
-
-## 🤝 Berkontribusi
-
-Kontribusi selalu terbuka! Jika Anda memiliki ide perbaikan, penambahan fitur, atau menemukan kendala (bug):
-1. Fork repository ini
-2. Buat feature branch baru (`git checkout -b feature/FiturKeren`)
-3. Commit perubahan Anda (`git commit -m 'feat: Tambahkan fitur presensi QR code'`)
-4. Push ke branch Anda (`git push origin feature/FiturKeren`)
-5. Ajukan **Pull Request**
-
----
-
-## 📄 Lisensi
-
-Proyek ini dirilis di bawah lisensi [MIT](LICENSE). Silakan gunakan, pelajari, dan modifikasi untuk kebutuhan edukasi di sekolah atau instansi Anda.
-
----
-
 <div align="center">
-  <p>Dikembangkan dengan ❤️ untuk kemudahan monitoring PKL siswa SMK & Vokasi Indonesia.</p>
+  <p>Dikembangkan Oleh SMKN 1 Pungging.</p>
   <sub>© 2026 Jurnify. All rights reserved.</sub>
 </div>
