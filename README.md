@@ -2,7 +2,7 @@
 
 <img src="static/img/jurnify-logo.png" alt="Jurnify Logo" width="240" />
 
-# Jurnify — Sistem Jurnal & Presensi PKL Modern Berbasis AI & Cloud
+# Jurnify - Sistem Jurnal & Presensi PKL Modern Berbasis AI & Cloud
 
 [![Python Version](https://img.shields.io/badge/python-3.12-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Framework](https://img.shields.io/badge/framework-Flask%203.x-black.svg?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
