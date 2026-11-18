@@ -20,8 +20,6 @@
 [Arsitektur](#-arsitektur--alur-sistem) • 
 [Tech Stack](#-tech-stack) • 
 [Instalasi Lokal](#-instalasi-lokal) • 
-[Panduan Deployment](#-panduan-deployment-ke-vercel) • 
-[Environment Variables](#-konfigurasi-environment-variables) • 
 [Struktur Direktori](#-struktur-direktori)
 
 </div>
